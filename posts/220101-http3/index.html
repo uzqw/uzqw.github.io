@@ -1,0 +1,272 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis - zqw's notes</title><meta name=Description content="Real-world testing of HTTP/3 (QUIC) using curl and Wireshark, comparing performance against HTTP/2 on degraded networks with high latency and packet loss."><meta property="og:url" content="https://uzqw.github.io/posts/220101-http3/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis"><meta property="og:description" content="Real-world testing of HTTP/3 (QUIC) using curl and Wireshark, comparing performance against HTTP/2 on degraded networks with high latency and packet loss."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2022-01-01T12:00:00+08:00"><meta property="article:modified_time" content="2022-03-17T12:00:00+08:00"><meta property="article:tag" content="HTTP/3"><meta property="article:tag" content="QUIC"><meta property="article:tag" content="Performance Testing"><meta name=twitter:card content="summary"><meta name=twitter:title content="HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis"><meta name=twitter:description content="Real-world testing of HTTP/3 (QUIC) using curl and Wireshark, comparing performance against HTTP/2 on degraded networks with high latency and packet loss."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/220101-http3/><link rel=prev href=https://uzqw.github.io/posts/211226-https/><link rel=next href=https://uzqw.github.io/posts/220316-go1.18/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/220101-http3\/"},"genre":"posts","keywords":"HTTP\/3, QUIC, Performance Testing","wordcount":1142,"url":"https:\/\/uzqw.github.io\/posts\/220101-http3\/","datePublished":"2022-01-01T12:00:00+08:00","dateModified":"2022-03-17T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"Real-world testing of HTTP/3 (QUIC) using curl and Wireshark, comparing performance against HTTP/2 on degraded networks with high latency and packet loss."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/220101-http3/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/220101-http3/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/220101-http3/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/220101-http3/ selected>English</option><option value=https://uzqw.net/posts/220101-http3/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/220101-http3/ selected>English</option><option value=https://uzqw.net/posts/220101-http3/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/networking/><i class="far fa-folder fa-fw" aria-hidden=true></i>Networking</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2022-01-01>2022-01-01</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1142 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;6 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-http3-core-improvements>1. HTTP/3 Core Improvements</a><ul><li><a href=#11-protocol-stack-comparison>1.1 Protocol Stack Comparison</a></li><li><a href=#12-theoretical-advantages>1.2 Theoretical Advantages</a></li></ul></li><li><a href=#2-test-environment-setup>2. Test Environment Setup</a><ul><li><a href=#21-simulating-degraded-networks>2.1 Simulating Degraded Networks</a></li><li><a href=#22-test-targets>2.2 Test Targets</a></li><li><a href=#23-curl-with-http3-support>2.3 curl with HTTP/3 Support</a></li></ul></li><li><a href=#3-performance-comparison-tests>3. Performance Comparison Tests</a><ul><li><a href=#31-normal-network>3.1 Normal Network</a></li><li><a href=#32-high-latency-network-100ms-rtt>3.2 High Latency Network (100ms RTT)</a></li><li><a href=#33-lossy-network-5-packet-loss>3.3 Lossy Network (5% Packet Loss)</a></li></ul></li><li><a href=#4-packet-analysis>4. Packet Analysis</a><ul><li><a href=#41-capturing-quic-with-wireshark>4.1 Capturing QUIC with Wireshark</a></li><li><a href=#42-observing-head-of-line-blocking>4.2 Observing Head-of-Line Blocking</a></li><li><a href=#43-connection-migration-demo>4.3 Connection Migration Demo</a></li></ul></li><li><a href=#5-quic-internals-deep-dive>5. QUIC Internals Deep Dive</a><ul><li><a href=#51-flow-control>5.1 Flow Control</a></li><li><a href=#52-packet-loss-detection--recovery>5.2 Packet Loss Detection & Recovery</a></li><li><a href=#53-0-rtt-mechanism>5.3 0-RTT Mechanism</a></li></ul></li><li><a href=#6-practical-recommendations>6. Practical Recommendations</a><ul><li><a href=#61-when-to-use-http3>6.1 When to Use HTTP/3</a></li><li><a href=#62-nginx-http3-configuration>6.2 Nginx HTTP/3 Configuration</a></li><li><a href=#63-cdn-support-status>6.3 CDN Support Status</a></li></ul></li><li><a href=#7-summary>7. Summary</a><ul><li><a href=#71-test-conclusions>7.1 Test Conclusions</a></li><li><a href=#72-key-takeaways>7.2 Key Takeaways</a></li></ul></li></ul></nav></div></div><div class=content id=content><p>HTTP/3 replaces TCP+TLS with QUIC, claiming to solve &ldquo;head-of-line blocking&rdquo;. But how does it actually perform? This post uses simulated degraded networks to compare HTTP/2 and HTTP/3 with real data.</p><h2 id=1-http3-core-improvements>1. HTTP/3 Core Improvements</h2><h3 id=11-protocol-stack-comparison>1.1 Protocol Stack Comparison</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>HTTP/2:                    HTTP/3:
+</span></span><span class=line><span class=cl>┌─────────────┐            ┌─────────────┐
+</span></span><span class=line><span class=cl>│   HTTP/2    │            │   HTTP/3    │
+</span></span><span class=line><span class=cl>├─────────────┤            ├─────────────┤
+</span></span><span class=line><span class=cl>│    TLS 1.3  │            │    QUIC     │ ← Transport + encryption merged
+</span></span><span class=line><span class=cl>├─────────────┤            │  (incl TLS) │
+</span></span><span class=line><span class=cl>│     TCP     │            └──────┬──────┘
+</span></span><span class=line><span class=cl>└─────────────┘                   │
+</span></span><span class=line><span class=cl>                                  │
+</span></span><span class=line><span class=cl>                            ┌─────▼─────┐
+</span></span><span class=line><span class=cl>                            │    UDP    │
+</span></span><span class=line><span class=cl>                            └───────────┘
+</span></span></code></pre></td></tr></table></div></div><h3 id=12-theoretical-advantages>1.2 Theoretical Advantages</h3><table><thead><tr><th>Problem</th><th>HTTP/2 (TCP)</th><th>HTTP/3 (QUIC)</th></tr></thead><tbody><tr><td>Handshake latency</td><td>TCP (1-RTT) + TLS (1-2 RTT)</td><td>0-1 RTT</td></tr><tr><td>Head-of-line blocking</td><td>Exists at TCP layer</td><td>Completely solved</td></tr><tr><td>Connection migration</td><td>IP change requires reconnect</td><td>Seamless migration</td></tr><tr><td>Packet loss recovery</td><td>Slow retransmission</td><td>Faster recovery</td></tr></tbody></table><h2 id=2-test-environment-setup>2. Test Environment Setup</h2><h3 id=21-simulating-degraded-networks>2.1 Simulating Degraded Networks</h3><p>Using Linux <code>tc</code> command:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Add 100ms delay + 5% packet loss</span>
+</span></span><span class=line><span class=cl>sudo tc qdisc add dev eth0 root netem delay 100ms loss 5%
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Check current settings</span>
+</span></span><span class=line><span class=cl>tc qdisc show dev eth0
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Restore normal</span>
+</span></span><span class=line><span class=cl>sudo tc qdisc del dev eth0 root
+</span></span></code></pre></td></tr></table></div></div><h3 id=22-test-targets>2.2 Test Targets</h3><p>Pick a site that supports both HTTP/2 and HTTP/3:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Check if site supports HTTP/3</span>
+</span></span><span class=line><span class=cl>curl -I https://cloudflare.com 2&gt;<span class=p>&amp;</span><span class=m>1</span> <span class=p>|</span> grep -i alt-svc
+</span></span><span class=line><span class=cl><span class=c1># alt-svc: h3=&#34;:443&#34;  ← Supports HTTP/3</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=23-curl-with-http3-support>2.3 curl with HTTP/3 Support</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Check curl version (need 7.66+)</span>
+</span></span><span class=line><span class=cl>curl --version <span class=p>|</span> grep HTTP3
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># If not supported, install HTTP/3-enabled version</span>
+</span></span><span class=line><span class=cl><span class=c1># Ubuntu:</span>
+</span></span><span class=line><span class=cl>sudo add-apt-repository ppa:savoury1/curl34
+</span></span><span class=line><span class=cl>sudo apt update <span class=o>&amp;&amp;</span> sudo apt install curl
+</span></span></code></pre></td></tr></table></div></div><h2 id=3-performance-comparison-tests>3. Performance Comparison Tests</h2><h3 id=31-normal-network>3.1 Normal Network</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># HTTP/2</span>
+</span></span><span class=line><span class=cl>curl -w <span class=s2>&#34;Total: %{time_total}s\n&#34;</span> -o /dev/null -s --http2 https://cloudflare.com
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># HTTP/3</span>
+</span></span><span class=line><span class=cl>curl -w <span class=s2>&#34;Total: %{time_total}s\n&#34;</span> -o /dev/null -s --http3 https://cloudflare.com
+</span></span></code></pre></td></tr></table></div></div><p><strong>Results (no degradation)</strong>:</p><table><thead><tr><th>Protocol</th><th>First Connection</th><th>Reused Connection</th></tr></thead><tbody><tr><td>HTTP/2</td><td>180ms</td><td>50ms</td></tr><tr><td>HTTP/3</td><td>150ms</td><td>45ms</td></tr></tbody></table><p>HTTP/3 is slightly faster, but not by much.</p><h3 id=32-high-latency-network-100ms-rtt>3.2 High Latency Network (100ms RTT)</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Add delay</span>
+</span></span><span class=line><span class=cl>sudo tc qdisc add dev eth0 root netem delay 100ms
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Test</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> i in <span class=o>{</span>1..10<span class=o>}</span><span class=p>;</span> <span class=k>do</span>
+</span></span><span class=line><span class=cl>  <span class=nb>echo</span> <span class=s2>&#34;=== HTTP/2 ===&#34;</span>
+</span></span><span class=line><span class=cl>  curl -w <span class=s2>&#34;%{time_total}s\n&#34;</span> -o /dev/null -s --http2 https://cloudflare.com
+</span></span><span class=line><span class=cl>  <span class=nb>echo</span> <span class=s2>&#34;=== HTTP/3 ===&#34;</span>
+</span></span><span class=line><span class=cl>  curl -w <span class=s2>&#34;%{time_total}s\n&#34;</span> -o /dev/null -s --http3 https://cloudflare.com
+</span></span><span class=line><span class=cl><span class=k>done</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Results (100ms RTT)</strong>:</p><table><thead><tr><th>Protocol</th><th>Avg Time</th><th>Handshake %</th></tr></thead><tbody><tr><td>HTTP/2</td><td>650ms</td><td>46%</td></tr><tr><td>HTTP/3</td><td>450ms</td><td>33%</td></tr></tbody></table><p><strong>Analysis</strong>: On high-latency networks, QUIC&rsquo;s 0-RTT handshake advantage is significant.</p><h3 id=33-lossy-network-5-packet-loss>3.3 Lossy Network (5% Packet Loss)</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Add packet loss</span>
+</span></span><span class=line><span class=cl>sudo tc qdisc change dev eth0 root netem delay 50ms loss 5%
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Test (load a large page)</span>
+</span></span><span class=line><span class=cl><span class=nb>time</span> curl -o /dev/null -s --http2 https://www.cloudflare.com/
+</span></span><span class=line><span class=cl><span class=nb>time</span> curl -o /dev/null -s --http3 https://www.cloudflare.com/
+</span></span></code></pre></td></tr></table></div></div><p><strong>Results (5% packet loss)</strong>:</p><table><thead><tr><th>Protocol</th><th>Avg Time</th><th>Std Dev</th></tr></thead><tbody><tr><td>HTTP/2</td><td>2.1s</td><td>±0.8s</td></tr><tr><td>HTTP/3</td><td>1.3s</td><td>±0.3s</td></tr></tbody></table><p><strong>Key findings</strong>:</p><ol><li>HTTP/3 is 40% faster on average</li><li>HTTP/3 is more stable (lower standard deviation)</li></ol><h2 id=4-packet-analysis>4. Packet Analysis</h2><h3 id=41-capturing-quic-with-wireshark>4.1 Capturing QUIC with Wireshark</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Need to set SSLKEYLOGFILE to decrypt QUIC</span>
+</span></span><span class=line><span class=cl><span class=nb>export</span> <span class=nv>SSLKEYLOGFILE</span><span class=o>=</span>/tmp/keylog.txt
+</span></span><span class=line><span class=cl>curl --http3 https://cloudflare.com
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># In Wireshark:</span>
+</span></span><span class=line><span class=cl><span class=c1># Edit → Preferences → Protocols → TLS</span>
+</span></span><span class=line><span class=cl><span class=c1># Set (Pre)-Master-Secret log filename: /tmp/keylog.txt</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=42-observing-head-of-line-blocking>4.2 Observing Head-of-Line Blocking</h3><p><strong>HTTP/2 (TCP) Problem</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Timeline:
+</span></span><span class=line><span class=cl>  Stream 1: [Packet 1] [Packet 2] ...
+</span></span><span class=line><span class=cl>  Stream 2: [Packet 1] [Packet 2] ...
+</span></span><span class=line><span class=cl>  Stream 3: [Packet 1] [Packet 2] ...
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>If Stream 1&#39;s Packet 1 is lost:
+</span></span><span class=line><span class=cl>  TCP: Wait for retransmission... (ALL streams are blocked!)
+</span></span><span class=line><span class=cl>        ↓
+</span></span><span class=line><span class=cl>  Stream 2, 3 data has arrived, but can&#39;t be delivered to app
+</span></span></code></pre></td></tr></table></div></div><p><strong>HTTP/3 (QUIC) Solution</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>QUIC implements multiplexing over UDP:
+</span></span><span class=line><span class=cl>  Stream 1: [Packet 1 lost] → Retransmit
+</span></span><span class=line><span class=cl>  Stream 2: [Processing normally] ← Not affected!
+</span></span><span class=line><span class=cl>  Stream 3: [Processing normally] ← Not affected!
+</span></span></code></pre></td></tr></table></div></div><h3 id=43-connection-migration-demo>4.3 Connection Migration Demo</h3><p>QUIC uses Connection ID instead of IP:Port to identify connections:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Simulate WiFi → 4G switch</span>
+</span></span><span class=line><span class=cl><span class=c1># 1. Start download</span>
+</span></span><span class=line><span class=cl>curl --http3 -O https://terra-nas.com/largefile.bin <span class=p>&amp;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 2. Switch network interface</span>
+</span></span><span class=line><span class=cl>sudo ip route change default via 192.168.1.1 dev wlan0
+</span></span><span class=line><span class=cl>sudo ip route change default via 10.0.0.1 dev eth0
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 3. Observe if download is interrupted</span>
+</span></span><span class=line><span class=cl><span class=c1># HTTP/3: Continues (Connection ID unchanged)</span>
+</span></span><span class=line><span class=cl><span class=c1># HTTP/2: Connection drops, needs to reconnect</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=5-quic-internals-deep-dive>5. QUIC Internals Deep Dive</h2><h3 id=51-flow-control>5.1 Flow Control</h3><p>QUIC has two levels of flow control:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Connection level: Limits total flow across all Streams
+</span></span><span class=line><span class=cl>Stream level: Limits individual Stream flow
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>┌─────────────────────────────────────┐
+</span></span><span class=line><span class=cl>│ Connection Window = 1MB             │
+</span></span><span class=line><span class=cl>│ ┌───────────┐ ┌───────────┐        │
+</span></span><span class=line><span class=cl>│ │ Stream 1  │ │ Stream 2  │ ...    │
+</span></span><span class=line><span class=cl>│ │ Window=   │ │ Window=   │        │
+</span></span><span class=line><span class=cl>│ │ 256KB     │ │ 256KB     │        │
+</span></span><span class=line><span class=cl>│ └───────────┘ └───────────┘        │
+</span></span><span class=line><span class=cl>└─────────────────────────────────────┘
+</span></span></code></pre></td></tr></table></div></div><h3 id=52-packet-loss-detection--recovery>5.2 Packet Loss Detection & Recovery</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>TCP packet loss recovery:
+</span></span><span class=line><span class=cl>  Send: 1, 2, 3, 4, 5
+</span></span><span class=line><span class=cl>  ACK:  1, 2, -  (3 lost)
+</span></span><span class=line><span class=cl>  Wait for timeout... or 3 duplicate ACKs
+</span></span><span class=line><span class=cl>  Retransmit: 3
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>QUIC packet loss recovery:
+</span></span><span class=line><span class=cl>  Each packet has a unique, incrementing sequence number
+</span></span><span class=line><span class=cl>  ACK packets contain detailed received ranges
+</span></span><span class=line><span class=cl>  More accurate RTT estimation
+</span></span><span class=line><span class=cl>  Faster retransmission triggering
+</span></span></code></pre></td></tr></table></div></div><h3 id=53-0-rtt-mechanism>5.3 0-RTT Mechanism</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>First connection:
+</span></span><span class=line><span class=cl>  Client → Server: ClientHello + supported keys
+</span></span><span class=line><span class=cl>  Client ← Server: ServerHello + cert + Session Ticket
+</span></span><span class=line><span class=cl>  Client → Server: Start sending encrypted data
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Subsequent connections:
+</span></span><span class=line><span class=cl>  Client → Server: ClientHello + EarlyData (using previous Session Ticket)
+</span></span><span class=line><span class=cl>  Data is already transmitting! No need to wait for handshake
+</span></span></code></pre></td></tr></table></div></div><h2 id=6-practical-recommendations>6. Practical Recommendations</h2><h3 id=61-when-to-use-http3>6.1 When to Use HTTP/3</h3><table><thead><tr><th>Scenario</th><th>Recommendation</th><th>Reason</th></tr></thead><tbody><tr><td>Mobile clients</td><td>Strongly recommended</td><td>Frequent network switching, high packet loss</td></tr><tr><td>Weak network regions</td><td>Strongly recommended</td><td>High latency, high packet loss</td></tr><tr><td>Internal services</td><td>Optional</td><td>Stable network, small benefit</td></tr><tr><td>Real-time communication</td><td>Recommended</td><td>Low latency requirements</td></tr></tbody></table><h3 id=62-nginx-http3-configuration>6.2 Nginx HTTP/3 Configuration</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=c1># Requires Nginx 1.25+ or nginx-quic
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=k>server</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kn>listen</span> <span class=mi>443</span> <span class=s>ssl</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>listen</span> <span class=mi>443</span> <span class=s>quic</span> <span class=s>reuseport</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=kn>http2</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>http3</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>http3_hq</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=kn>ssl_certificate</span> <span class=s>/path/to/cert.pem</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>ssl_certificate_key</span> <span class=s>/path/to/key.pem</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1># Tell clients HTTP/3 is supported
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kn>add_header</span> <span class=s>Alt-Svc</span> <span class=s>&#39;h3=&#34;:443&#34;</span><span class=p>;</span> <span class=kn>ma=86400&#39;</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=63-cdn-support-status>6.3 CDN Support Status</h3><table><thead><tr><th>CDN</th><th>HTTP/3 Support</th></tr></thead><tbody><tr><td>Cloudflare</td><td>Enabled by default</td></tr><tr><td>Google Cloud CDN</td><td>Supported</td></tr><tr><td>AWS CloudFront</td><td>Supported</td></tr><tr><td>Akamai</td><td>Supported</td></tr></tbody></table><h2 id=7-summary>7. Summary</h2><h3 id=71-test-conclusions>7.1 Test Conclusions</h3><table><thead><tr><th>Network Condition</th><th>HTTP/3 Advantage</th></tr></thead><tbody><tr><td>Normal network</td><td>Slightly faster 10-20%</td></tr><tr><td>High latency (100ms+)</td><td>30-40% faster</td></tr><tr><td>High packet loss (5%+)</td><td>40%+ faster, more stable</td></tr><tr><td>Network switching</td><td>Seamless migration vs reconnect</td></tr></tbody></table><h3 id=72-key-takeaways>7.2 Key Takeaways</h3><ol><li><strong>Head-of-line blocking is a real problem</strong>: On lossy networks, TCP-multiplexed streams block each other</li><li><strong>0-RTT is a killer feature</strong>: Noticeably better on high-latency networks</li><li><strong>UDP ≠ unreliable</strong>: QUIC implements reliable transport in userspace</li><li><strong>Low migration cost</strong>: Major browsers and CDNs already support it, just flip a config switch</li></ol><p><strong>Recommendation</strong>: If your user base has a significant mobile or weak-network population, HTTP/3 is worth enabling.</p></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2022-03-17</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/220101-http3/ data-title="HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis" data-hashtags="HTTP/3,QUIC,Performance Testing"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/220101-http3/ data-hashtag=HTTP/3><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/220101-http3/ data-title="HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/220101-http3/ data-title="HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/220101-http3/ data-title="HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/http/3/>HTTP/3</a>,&nbsp;<a href=/tags/quic/>QUIC</a>,&nbsp;<a href=/tags/performance-testing/>Performance Testing</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/211226-https/ class=prev rel=prev title="HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms</a>
+<a href=/posts/220316-go1.18/ class=next rel=next title="Go Generics in Practice: Pitfalls and Best Practices">Go Generics in Practice: Pitfalls and Best Practices<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

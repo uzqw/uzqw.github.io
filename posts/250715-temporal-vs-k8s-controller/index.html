@@ -1,0 +1,370 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms - zqw's notes</title><meta name=Description content="Deep comparison between Kubernetes Controller's declarative Reconcile pattern and Temporal's imperative Workflow pattern. How AI Infra platforms can combine both to build a complete control plane."><meta property="og:url" content="https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms"><meta property="og:description" content="Deep comparison between Kubernetes Controller's declarative Reconcile pattern and Temporal's imperative Workflow pattern. How AI Infra platforms can combine both to build a complete control plane."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2025-07-15T10:00:00+08:00"><meta property="article:modified_time" content="2025-07-15T10:00:00+08:00"><meta property="article:tag" content="Temporal"><meta property="article:tag" content="Kubernetes"><meta property="article:tag" content="Control Plane"><meta name=twitter:card content="summary"><meta name=twitter:title content="Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms"><meta name=twitter:description content="Deep comparison between Kubernetes Controller's declarative Reconcile pattern and Temporal's imperative Workflow pattern. How AI Infra platforms can combine both to build a complete control plane."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/><link rel=prev href=https://uzqw.github.io/posts/250710-temporal-saga/><link rel=next href=https://uzqw.github.io/posts/251207-dive-into-k8s-01/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/250715-temporal-vs-k8s-controller\/"},"genre":"posts","keywords":"Temporal, Kubernetes, Control Plane","wordcount":1209,"url":"https:\/\/uzqw.github.io\/posts\/250715-temporal-vs-k8s-controller\/","datePublished":"2025-07-15T10:00:00+08:00","dateModified":"2025-07-15T10:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"Deep comparison between Kubernetes Controller's declarative Reconcile pattern and Temporal's imperative Workflow pattern. How AI Infra platforms can combine both to build a complete control plane."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/250715-temporal-vs-k8s-controller/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/ selected>English</option><option value=https://uzqw.net/posts/250715-temporal-vs-k8s-controller/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/ selected>English</option><option value=https://uzqw.net/posts/250715-temporal-vs-k8s-controller/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/distributed-systems/><i class="far fa-folder fa-fw" aria-hidden=true></i>Distributed Systems</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2025-07-15>2025-07-15</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1209 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;6 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-two-control-plane-paradigms>1. Two Control Plane Paradigms</a><ul><li><a href=#11-philosophy-comparison>1.1 Philosophy Comparison</a></li><li><a href=#12-level-triggered-vs-edge-triggered>1.2 Level-Triggered vs Edge-Triggered</a></li><li><a href=#13-use-case-analysis>1.3 Use Case Analysis</a></li></ul></li><li><a href=#2-code-comparison>2. Code Comparison</a><ul><li><a href=#21-k8s-controller-example>2.1 K8s Controller Example</a></li><li><a href=#22-temporal-workflow-example>2.2 Temporal Workflow Example</a></li></ul></li><li><a href=#3-core-mechanism-comparison>3. Core Mechanism Comparison</a><ul><li><a href=#31-failure-recovery>3.1 Failure Recovery</a></li><li><a href=#32-complex-branching>3.2 Complex Branching</a></li><li><a href=#33-resource-usage>3.3 Resource Usage</a></li></ul></li><li><a href=#4-ai-infra-best-practices>4. AI Infra Best Practices</a><ul><li><a href=#41-separation-of-concerns-architecture>4.1 Separation of Concerns Architecture</a></li><li><a href=#42-temporal-activity-calling-k8s-api>4.2 Temporal Activity Calling K8s API</a></li><li><a href=#43-when-to-use-which>4.3 When to Use Which?</a></li></ul></li><li><a href=#5-summary>5. Summary</a></li></ul></nav></div></div><div class=content id=content><p>K8s Controllers and Temporal are both &ldquo;control plane&rdquo; technologies, but they represent fundamentally different design philosophies. This post deep-dives into their core differences and explores how to combine them in AI Infra platforms.</p><h2 id=1-two-control-plane-paradigms>1. Two Control Plane Paradigms</h2><h3 id=11-philosophy-comparison>1.1 Philosophy Comparison</h3><table><thead><tr><th>Dimension</th><th>K8s Controller</th><th>Temporal</th></tr></thead><tbody><tr><td>Core philosophy</td><td><strong>Declarative</strong></td><td><strong>Imperative/Orchestrated</strong></td></tr><tr><td>Focus</td><td>Desired State</td><td>Workflow/Process</td></tr><tr><td>Trigger mechanism</td><td>Level-Triggered</td><td>Event Sourcing</td></tr><tr><td>Expression</td><td>&ldquo;I want 3 Pods&rdquo;</td><td>&ldquo;First do A, then B, if fail do C&rdquo;</td></tr></tbody></table><h3 id=12-level-triggered-vs-edge-triggered>1.2 Level-Triggered vs Edge-Triggered</h3><p><strong>K8s Controller&rsquo;s Level-Triggered approach</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Desired state: replicas=3
+</span></span><span class=line><span class=cl>Current state: pods=2
+</span></span><span class=line><span class=cl>  → Reconcile → Create 1 Pod
+</span></span><span class=line><span class=cl>  → Check again → pods=3 
+</span></span><span class=line><span class=cl>  → No action needed
+</span></span></code></pre></td></tr></table></div></div><p>Regardless of what triggered Reconcile (Pod deleted, new Deployment, health check failed), the Controller only cares about the <strong>gap</strong> between current and desired state.</p><p><strong>Temporal&rsquo;s Event Sourcing</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Event 1: WorkflowStarted
+</span></span><span class=line><span class=cl>Event 2: ActivityScheduled(Payment)
+</span></span><span class=line><span class=cl>Event 3: ActivityCompleted(Success)
+</span></span><span class=line><span class=cl>Event 4: ActivityScheduled(Inventory)
+</span></span><span class=line><span class=cl>[Crash Recovery]
+</span></span><span class=line><span class=cl>→ Replay Events 1-4
+</span></span><span class=line><span class=cl>→ Resume from Event 4
+</span></span></code></pre></td></tr></table></div></div><p>Temporal needs the complete <strong>history</strong> to recover state.</p><h3 id=13-use-case-analysis>1.3 Use Case Analysis</h3><table><thead><tr><th>Scenario</th><th>Better Choice</th><th>Reason</th></tr></thead><tbody><tr><td>Manage Pod/GPU resources</td><td>K8s Operator</td><td>Resources are &ldquo;state to maintain&rdquo;</td></tr><tr><td>Training task flow</td><td>Temporal</td><td>It&rsquo;s &ldquo;ordered steps&rdquo;</td></tr><tr><td>Self-healing</td><td>K8s Controller</td><td>Periodic Reconcile auto-fixes</td></tr><tr><td>Complex branching logic</td><td>Temporal</td><td>Code expresses it more naturally</td></tr><tr><td>Run indefinitely</td><td>K8s Controller</td><td>Stateless, low overhead</td></tr><tr><td>Has clear end</td><td>Temporal</td><td>Native support for complete/fail/cancel</td></tr></tbody></table><h2 id=2-code-comparison>2. Code Comparison</h2><h3 id=21-k8s-controller-example>2.1 K8s Controller Example</h3><p>Operator managing an AI training job:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// reconciler.go</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>r</span><span class=w> </span><span class=o>*</span><span class=nx>TrainingJobReconciler</span><span class=p>)</span><span class=w> </span><span class=nf>Reconcile</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>req</span><span class=w> </span><span class=nx>ctrl</span><span class=p>.</span><span class=nx>Request</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=nx>ctrl</span><span class=p>.</span><span class=nx>Result</span><span class=p>,</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Get CR resource</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>job</span><span class=w> </span><span class=nx>trainingv1</span><span class=p>.</span><span class=nx>TrainingJob</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>r</span><span class=p>.</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>req</span><span class=p>.</span><span class=nx>NamespacedName</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>job</span><span class=p>);</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>ctrl</span><span class=p>.</span><span class=nx>Result</span><span class=p>{},</span><span class=w> </span><span class=nx>client</span><span class=p>.</span><span class=nf>IgnoreNotFound</span><span class=p>(</span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Get current state</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>pods</span><span class=w> </span><span class=nx>corev1</span><span class=p>.</span><span class=nx>PodList</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>r</span><span class=p>.</span><span class=nf>List</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>pods</span><span class=p>,</span><span class=w> </span><span class=nx>client</span><span class=p>.</span><span class=nx>MatchingLabels</span><span class=p>{</span><span class=s>&#34;job&#34;</span><span class=p>:</span><span class=w> </span><span class=nx>job</span><span class=p>.</span><span class=nx>Name</span><span class=p>})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Desired state vs current state</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>desiredReplicas</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>job</span><span class=p>.</span><span class=nx>Spec</span><span class=p>.</span><span class=nx>Workers</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>currentReplicas</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>pods</span><span class=p>.</span><span class=nx>Items</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>currentReplicas</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>desiredReplicas</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Create Pods</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>currentReplicas</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>desiredReplicas</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>r</span><span class=p>.</span><span class=nf>Create</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>r</span><span class=p>.</span><span class=nf>buildWorkerPod</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>job</span><span class=p>,</span><span class=w> </span><span class=nx>i</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=k>if</span><span class=w> </span><span class=nx>currentReplicas</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=nx>desiredReplicas</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Delete excess Pods</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>desiredReplicas</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>currentReplicas</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>r</span><span class=p>.</span><span class=nf>Delete</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>pods</span><span class=p>.</span><span class=nx>Items</span><span class=p>[</span><span class=nx>i</span><span class=p>])</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Update status</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>job</span><span class=p>.</span><span class=nx>Status</span><span class=p>.</span><span class=nx>ActiveWorkers</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>desiredReplicas</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>r</span><span class=p>.</span><span class=nf>Status</span><span class=p>().</span><span class=nf>Update</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>job</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Periodic recheck</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>ctrl</span><span class=p>.</span><span class=nx>Result</span><span class=p>{</span><span class=nx>RequeueAfter</span><span class=p>:</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nx>Minute</span><span class=p>},</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Characteristics</strong>:</p><ul><li>Each Reconcile starts fresh from &ldquo;current state&rdquo;</li><li>Doesn&rsquo;t care about &ldquo;how we got here&rdquo;, only &ldquo;what&rsquo;s the gap now&rdquo;</li><li>Great for <strong>continuously running</strong> resource management</li></ul><h3 id=22-temporal-workflow-example>2.2 Temporal Workflow Example</h3><p>Same AI training job with Temporal:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// workflow.go</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>TrainingWorkflow</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>job</span><span class=w> </span><span class=nx>TrainingJob</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Step 1: Prepare data</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>dataPath</span><span class=w> </span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>PrepareData</span><span class=p>,</span><span class=w> </span><span class=nx>job</span><span class=p>.</span><span class=nx>DataSource</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>dataPath</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;data preparation failed: %w&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Step 2: Start training (might run for hours)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>modelPath</span><span class=w> </span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>StartTraining</span><span class=p>,</span><span class=w> </span><span class=nx>TrainingParams</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>DataPath</span><span class=p>:</span><span class=w> </span><span class=nx>dataPath</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Epochs</span><span class=p>:</span><span class=w>   </span><span class=nx>job</span><span class=p>.</span><span class=nx>Epochs</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Workers</span><span class=p>:</span><span class=w>  </span><span class=nx>job</span><span class=p>.</span><span class=nx>Workers</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>modelPath</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Clean up intermediate data</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>CleanupData</span><span class=p>,</span><span class=w> </span><span class=nx>dataPath</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;training failed: %w&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Step 3: Model evaluation</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>metrics</span><span class=w> </span><span class=nx>Metrics</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>EvaluateModel</span><span class=p>,</span><span class=w> </span><span class=nx>modelPath</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>metrics</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;evaluation failed: %w&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Step 4: Conditional branch - only deploy if accuracy meets threshold</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>metrics</span><span class=p>.</span><span class=nx>Accuracy</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=nx>job</span><span class=p>.</span><span class=nx>MinAccuracy</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>DeployModel</span><span class=p>,</span><span class=w> </span><span class=nx>modelPath</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Notify for human review</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>NotifyHumanReview</span><span class=p>,</span><span class=w> </span><span class=nx>job</span><span class=p>.</span><span class=nx>Owner</span><span class=p>,</span><span class=w> </span><span class=nx>metrics</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Characteristics</strong>:</p><ul><li>Code is the flow — sequential execution, branching clearly visible</li><li>Steps have dependencies (dataPath → training → modelPath)</li><li>Great for tasks with <strong>clear start and end</strong></li></ul><h2 id=3-core-mechanism-comparison>3. Core Mechanism Comparison</h2><h3 id=31-failure-recovery>3.1 Failure Recovery</h3><p><strong>K8s Controller</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Pod dies
+</span></span><span class=line><span class=cl>  → Informer receives Delete event
+</span></span><span class=line><span class=cl>  → Triggers Reconcile
+</span></span><span class=line><span class=cl>  → Sees current=2, desired=3
+</span></span><span class=line><span class=cl>  → Creates new Pod
+</span></span></code></pre></td></tr></table></div></div><p>Recovery relies on <strong>periodic state comparison</strong>, no history needed.</p><p><strong>Temporal</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Worker dies
+</span></span><span class=line><span class=cl>  → Workflow execution interrupted
+</span></span><span class=line><span class=cl>  → Start new Worker
+</span></span><span class=line><span class=cl>  → Replay from Event History
+</span></span><span class=line><span class=cl>  → Code re-executes to breakpoint
+</span></span><span class=line><span class=cl>  → Resume forward execution
+</span></span></code></pre></td></tr></table></div></div><p>Recovery relies on <strong>complete event history</strong>.</p><h3 id=32-complex-branching>3.2 Complex Branching</h3><p><strong>K8s Controller</strong> handling complex branches is painful:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Full of state machine logic</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>switch</span><span class=w> </span><span class=nx>job</span><span class=p>.</span><span class=nx>Status</span><span class=p>.</span><span class=nx>Phase</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>case</span><span class=w> </span><span class=s>&#34;Pending&#34;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nf>allPodsReady</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>job</span><span class=p>.</span><span class=nx>Status</span><span class=p>.</span><span class=nx>Phase</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=s>&#34;Running&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>case</span><span class=w> </span><span class=s>&#34;Running&#34;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nf>trainingComplete</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>job</span><span class=p>.</span><span class=nx>Status</span><span class=p>.</span><span class=nx>Phase</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=s>&#34;Evaluating&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=k>if</span><span class=w> </span><span class=nf>hasFailed</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>job</span><span class=p>.</span><span class=nx>Status</span><span class=p>.</span><span class=nx>Phase</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=s>&#34;Failed&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>case</span><span class=w> </span><span class=s>&#34;Evaluating&#34;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// More branches...</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Temporal</strong> handles it naturally:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Just use if-else, crystal clear</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>if</span><span class=w> </span><span class=nx>metrics</span><span class=p>.</span><span class=nx>Accuracy</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=nx>threshold</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nf>deployModel</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=k>if</span><span class=w> </span><span class=nx>retryCount</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>3</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nf>retrainWithMoreData</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nf>notifyHuman</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=33-resource-usage>3.3 Resource Usage</h3><table><thead><tr><th>Scenario</th><th>K8s Controller</th><th>Temporal</th></tr></thead><tbody><tr><td>1000 jobs</td><td>1 Controller Pod</td><td>1000 Workflow histories</td></tr><tr><td>Memory usage</td><td>O(1) - stateless</td><td>O(N) - each Workflow takes memory</td></tr><tr><td>Long-running</td><td>Low overhead</td><td>History bloat risk</td></tr></tbody></table><p><strong>Temporal&rsquo;s solution</strong>: <code>ContinueAsNew</code> to split history</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// When history gets too long, &#34;reincarnate&#34; as new Workflow</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>if</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>GetInfo</span><span class=p>(</span><span class=nx>ctx</span><span class=p>).</span><span class=nf>GetHistorySize</span><span class=p>()</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=mi>10000</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>NewContinueAsNewError</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>TrainingWorkflow</span><span class=p>,</span><span class=w> </span><span class=nx>job</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=4-ai-infra-best-practices>4. AI Infra Best Practices</h2><h3 id=41-separation-of-concerns-architecture>4.1 Separation of Concerns Architecture</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>┌─────────────────────────────────────┐
+</span></span><span class=line><span class=cl>│           Temporal Workflow         │
+</span></span><span class=line><span class=cl>│  (Task orchestration: train → eval → deploy)  │
+</span></span><span class=line><span class=cl>└───────────────┬─────────────────────┘
+</span></span><span class=line><span class=cl>                │ calls
+</span></span><span class=line><span class=cl>┌───────────────▼──────────────────────┐
+</span></span><span class=line><span class=cl>│           K8s Operator               │
+</span></span><span class=line><span class=cl>│  (Resource management: Pod, GPU, PVC)  │
+</span></span><span class=line><span class=cl>└───────────────┬──────────────────────┘
+</span></span><span class=line><span class=cl>                │ manages
+</span></span><span class=line><span class=cl>┌───────────────▼────────────────────┐
+</span></span><span class=line><span class=cl>│           Kubernetes Cluster        │
+</span></span><span class=line><span class=cl>│  (GPU nodes, storage, networking)    │
+</span></span><span class=line><span class=cl>└────────────────────────────────────┘
+</span></span></code></pre></td></tr></table></div></div><h3 id=42-temporal-activity-calling-k8s-api>4.2 Temporal Activity Calling K8s API</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>CreateTrainingPod</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>spec</span><span class=w> </span><span class=nx>PodSpec</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=kt>string</span><span class=p>,</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>clientset</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>getKubernetesClient</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>pod</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=o>&amp;</span><span class=nx>corev1</span><span class=p>.</span><span class=nx>Pod</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>ObjectMeta</span><span class=p>:</span><span class=w> </span><span class=nx>metav1</span><span class=p>.</span><span class=nx>ObjectMeta</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>GenerateName</span><span class=p>:</span><span class=w> </span><span class=s>&#34;training-&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>Labels</span><span class=p>:</span><span class=w>       </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=kt>string</span><span class=p>{</span><span class=s>&#34;managed-by&#34;</span><span class=p>:</span><span class=w> </span><span class=s>&#34;temporal&#34;</span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Spec</span><span class=p>:</span><span class=w> </span><span class=nx>spec</span><span class=p>.</span><span class=nf>ToK8sPodSpec</span><span class=p>(),</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>created</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>clientset</span><span class=p>.</span><span class=nf>CoreV1</span><span class=p>().</span><span class=nf>Pods</span><span class=p>(</span><span class=s>&#34;training&#34;</span><span class=p>).</span><span class=nf>Create</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>pod</span><span class=p>,</span><span class=w> </span><span class=nx>metav1</span><span class=p>.</span><span class=nx>CreateOptions</span><span class=p>{})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=s>&#34;&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>created</span><span class=p>.</span><span class=nx>Name</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>WaitForPodComplete</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>podName</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>clientset</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>getKubernetesClient</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>watch</span><span class=p>,</span><span class=w> </span><span class=nx>_</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>clientset</span><span class=p>.</span><span class=nf>CoreV1</span><span class=p>().</span><span class=nf>Pods</span><span class=p>(</span><span class=s>&#34;training&#34;</span><span class=p>).</span><span class=nf>Watch</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>metav1</span><span class=p>.</span><span class=nx>ListOptions</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>FieldSelector</span><span class=p>:</span><span class=w> </span><span class=s>&#34;metadata.name=&#34;</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=nx>podName</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>event</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>watch</span><span class=p>.</span><span class=nf>ResultChan</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>pod</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>event</span><span class=p>.</span><span class=nx>Object</span><span class=p>.(</span><span class=o>*</span><span class=nx>corev1</span><span class=p>.</span><span class=nx>Pod</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>pod</span><span class=p>.</span><span class=nx>Status</span><span class=p>.</span><span class=nx>Phase</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=nx>corev1</span><span class=p>.</span><span class=nx>PodSucceeded</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>pod</span><span class=p>.</span><span class=nx>Status</span><span class=p>.</span><span class=nx>Phase</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=nx>corev1</span><span class=p>.</span><span class=nx>PodFailed</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;Pod failed: %s&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>pod</span><span class=p>.</span><span class=nx>Status</span><span class=p>.</span><span class=nx>Message</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;Watch ended unexpectedly&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=43-when-to-use-which>4.3 When to Use Which?</h3><table><thead><tr><th>Need</th><th>Choice</th></tr></thead><tbody><tr><td>&ldquo;I need 3 GPU Pods&rdquo;</td><td>K8s Operator</td></tr><tr><td>&ldquo;First preprocess data, then train, retry 3 times on failure&rdquo;</td><td>Temporal</td></tr><tr><td>&ldquo;Auto-restart crashed Pods&rdquo;</td><td>K8s (built-in)</td></tr><tr><td>&ldquo;After training succeeds, auto-trigger eval and deploy&rdquo;</td><td>Temporal</td></tr><tr><td>&ldquo;Manage GPU resource pool&rdquo;</td><td>K8s Operator + Device Plugin</td></tr><tr><td>&ldquo;Coordinate execution order of multiple tasks&rdquo;</td><td>Temporal</td></tr></tbody></table><h2 id=5-summary>5. Summary</h2><table><thead><tr><th>Dimension</th><th>K8s Controller Wins</th><th>Temporal Wins</th></tr></thead><tbody><tr><td>Resource management</td><td>✓</td><td></td></tr><tr><td>Run indefinitely</td><td>✓</td><td></td></tr><tr><td>Self-healing</td><td>✓</td><td></td></tr><tr><td>Complex workflow orchestration</td><td></td><td>✓</td></tr><tr><td>Long transaction compensation</td><td></td><td>✓</td></tr><tr><td>Code-as-workflow</td><td></td><td>✓</td></tr></tbody></table><p><strong>Key insight</strong>: These aren&rsquo;t replacements for each other — they&rsquo;re complementary. In AI Infra control plane architecture:</p><ul><li><strong>K8s Operator</strong> is the &ldquo;foundation&rdquo; — manages underlying resources</li><li><strong>Temporal</strong> is the &ldquo;building&rdquo; — orchestrates business workflows</li></ul><p>Used together, they form a complete control plane architecture.</p></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2025-07-15</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/ data-title="Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms" data-hashtags="Temporal,Kubernetes,Control Plane"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/ data-hashtag=Temporal><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/ data-title="Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/ data-title="Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/ data-title="Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/temporal/>Temporal</a>,&nbsp;<a href=/tags/kubernetes/>Kubernetes</a>,&nbsp;<a href=/tags/control-plane/>Control Plane</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/250710-temporal-saga/ class=prev rel=prev title="Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions</a>
+<a href=/posts/251207-dive-into-k8s-01/ class=next rel=next title="Dive into K8s: Hand-Rolling CNI with Kind, From CrashLoop to VXLAN Packet Capture">Dive into K8s: Hand-Rolling CNI with Kind, From CrashLoop to VXLAN Packet Capture<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

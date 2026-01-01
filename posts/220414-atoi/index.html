@@ -1,0 +1,748 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Production-Grade String Parsing: From atoi to State Machine - zqw's notes</title><meta name=Description content="Starting from LeetCode's atoi problem, deep-diving into Go/Rust standard library implementations to understand production-grade string parsing design: state machines, error handling, boundary conditions."><meta property="og:url" content="https://uzqw.github.io/posts/220414-atoi/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Production-Grade String Parsing: From atoi to State Machine"><meta property="og:description" content="Starting from LeetCode's atoi problem, deep-diving into Go/Rust standard library implementations to understand production-grade string parsing design: state machines, error handling, boundary conditions."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2022-04-14T12:00:00+08:00"><meta property="article:modified_time" content="2022-04-14T12:00:00+08:00"><meta property="article:tag" content="State Machine"><meta property="article:tag" content="Source Code Analysis"><meta property="article:tag" content="Strings"><meta name=twitter:card content="summary"><meta name=twitter:title content="Production-Grade String Parsing: From atoi to State Machine"><meta name=twitter:description content="Starting from LeetCode's atoi problem, deep-diving into Go/Rust standard library implementations to understand production-grade string parsing design: state machines, error handling, boundary conditions."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/220414-atoi/><link rel=prev href=https://uzqw.github.io/posts/220316-go1.18/><link rel=next href=https://uzqw.github.io/posts/220815-disk-health-agent/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Production-Grade String Parsing: From atoi to State Machine","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/220414-atoi\/"},"genre":"posts","keywords":"State Machine, Source Code Analysis, Strings","wordcount":1790,"url":"https:\/\/uzqw.github.io\/posts\/220414-atoi\/","datePublished":"2022-04-14T12:00:00+08:00","dateModified":"2022-04-14T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"Starting from LeetCode's atoi problem, deep-diving into Go/Rust standard library implementations to understand production-grade string parsing design: state machines, error handling, boundary conditions."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/220414-atoi/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/220414-atoi/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/220414-atoi/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/220414-atoi/ selected>English</option><option value=https://uzqw.net/posts/220414-atoi/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/220414-atoi/ selected>English</option><option value=https://uzqw.net/posts/220414-atoi/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Production-Grade String Parsing: From atoi to State Machine</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/go/><i class="far fa-folder fa-fw" aria-hidden=true></i>Go</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2022-04-14>2022-04-14</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1790 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;9 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-interview-version-atoi>1. Interview Version atoi</a><ul><li><a href=#11-leetcode-8-string-to-integer>1.1 LeetCode 8: String to Integer</a></li><li><a href=#12-whats-missing>1.2 What&rsquo;s Missing?</a></li></ul></li><li><a href=#2-go-standard-library-analysis>2. Go Standard Library Analysis</a><ul><li><a href=#21-strconvparseint-signature>2.1 strconv.ParseInt Signature</a></li><li><a href=#22-error-types>2.2 Error Types</a></li><li><a href=#23-source-analysis>2.3 Source Analysis</a></li><li><a href=#24-design-highlights>2.4 Design Highlights</a></li></ul></li><li><a href=#3-state-machine-implementation>3. State Machine Implementation</a><ul><li><a href=#31-why-state-machine>3.1 Why State Machine?</a></li><li><a href=#32-state-machine-model>3.2 State Machine Model</a></li><li><a href=#33-go-implementation>3.3 Go Implementation</a></li></ul></li><li><a href=#4-rust-standard-library-comparison>4. Rust Standard Library Comparison</a><ul><li><a href=#41-rusts-from_str>4.1 Rust&rsquo;s from_str</a></li><li><a href=#42-rusts-error-handling>4.2 Rust&rsquo;s Error Handling</a></li><li><a href=#43-comparison>4.3 Comparison</a></li></ul></li><li><a href=#5-practical-applications>5. Practical Applications</a><ul><li><a href=#51-config-file-parsing>5.1 Config File Parsing</a></li><li><a href=#52-command-line-arguments>5.2 Command Line Arguments</a></li></ul></li><li><a href=#6-summary>6. Summary</a></li></ul></nav></div></div><div class=content id=content><p>LeetCode&rsquo;s atoi is a classic interview problem, but production-grade implementations are far more complex. This post starts from the interview version and gradually analyzes Go and Rust standard library implementations to understand &ldquo;production-grade&rdquo; code design.</p><h2 id=1-interview-version-atoi>1. Interview Version atoi</h2><h3 id=11-leetcode-8-string-to-integer>1.1 LeetCode 8: String to Integer</h3><p>Basic requirements:</p><ul><li>Skip leading whitespace</li><li>Handle positive/negative signs</li><li>Convert digit characters</li><li>Handle overflow</li></ul><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>myAtoi</span><span class=p>(</span><span class=nx>s</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=kt>int</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>i</span><span class=p>,</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Skip whitespace</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39; &#39;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>i</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Handle sign</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>sign</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;+&#39;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>i</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=k>if</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;-&#39;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>sign</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=o>-</span><span class=mi>1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>i</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Convert digits</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>result</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=sc>&#39;0&#39;</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w> </span><span class=o>&lt;=</span><span class=w> </span><span class=sc>&#39;9&#39;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>digit</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>int</span><span class=p>(</span><span class=nx>s</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=sc>&#39;0&#39;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Overflow check</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>result</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=p>(</span><span class=nx>math</span><span class=p>.</span><span class=nx>MaxInt32</span><span class=o>-</span><span class=nx>digit</span><span class=p>)</span><span class=o>/</span><span class=mi>10</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>if</span><span class=w> </span><span class=nx>sign</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=k>return</span><span class=w> </span><span class=nx>math</span><span class=p>.</span><span class=nx>MaxInt32</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=nx>math</span><span class=p>.</span><span class=nx>MinInt32</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>result</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>result</span><span class=o>*</span><span class=mi>10</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=nx>digit</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>i</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>sign</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=nx>result</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p>This passes LeetCode, but it&rsquo;s far from production-grade.</p><h3 id=12-whats-missing>1.2 What&rsquo;s Missing?</h3><table><thead><tr><th>Interview Version</th><th>Production Requirements</th></tr></thead><tbody><tr><td>Only handles int32</td><td>Supports multiple types (int8, int64, uint&mldr;)</td></tr><tr><td>Only returns result</td><td>Needs detailed error messages</td></tr><tr><td>Only base 10</td><td>Supports multiple bases (2, 8, 16&mldr;)</td></tr><tr><td>Simple overflow handling</td><td>Precise overflow detection</td></tr><tr><td>Fixed format</td><td>Supports 0x, 0o, 0b prefixes</td></tr></tbody></table><h2 id=2-go-standard-library-analysis>2. Go Standard Library Analysis</h2><h3 id=21-strconvparseint-signature>2.1 strconv.ParseInt Signature</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>ParseInt</span><span class=p>(</span><span class=nx>s</span><span class=w> </span><span class=kt>string</span><span class=p>,</span><span class=w> </span><span class=nx>base</span><span class=w> </span><span class=kt>int</span><span class=p>,</span><span class=w> </span><span class=nx>bitSize</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=nx>i</span><span class=w> </span><span class=kt>int64</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Parameters:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>//   s: input string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>//   base: radix (0 means auto-detect)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>//   bitSize: target type bits (8, 16, 32, 64)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Returns:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>//   i: parsed result</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>//   err: error info (includes detailed reason)</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=22-error-types>2.2 Error Types</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>NumError</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Func</span><span class=w> </span><span class=kt>string</span><span class=w> </span><span class=c1>// Function name (&#34;ParseInt&#34;)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Num</span><span class=w>  </span><span class=kt>string</span><span class=w> </span><span class=c1>// Input string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Err</span><span class=w>  </span><span class=kt>error</span><span class=w>  </span><span class=c1>// Specific error</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>var</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ErrRange</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;value out of range&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ErrSyntax</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;invalid syntax&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=23-source-analysis>2.3 Source Analysis</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span><span class=lnt>72
+</span><span class=lnt>73
+</span><span class=lnt>74
+</span><span class=lnt>75
+</span><span class=lnt>76
+</span><span class=lnt>77
+</span><span class=lnt>78
+</span><span class=lnt>79
+</span><span class=lnt>80
+</span><span class=lnt>81
+</span><span class=lnt>82
+</span><span class=lnt>83
+</span><span class=lnt>84
+</span><span class=lnt>85
+</span><span class=lnt>86
+</span><span class=lnt>87
+</span><span class=lnt>88
+</span><span class=lnt>89
+</span><span class=lnt>90
+</span><span class=lnt>91
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// src/strconv/atoi.go (simplified)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>ParseInt</span><span class=p>(</span><span class=nx>s</span><span class=w> </span><span class=kt>string</span><span class=p>,</span><span class=w> </span><span class=nx>base</span><span class=w> </span><span class=kt>int</span><span class=p>,</span><span class=w> </span><span class=nx>bitSize</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=nx>i</span><span class=w> </span><span class=kt>int64</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Empty string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>s</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=s>&#34;&#34;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nf>syntaxError</span><span class=p>(</span><span class=s>&#34;ParseInt&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>s</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Handle sign</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>s0</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>s</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>neg</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=kc>false</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;+&#39;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>s</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=mi>1</span><span class=p>:]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=k>if</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;-&#39;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>neg</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=kc>true</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>s</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=mi>1</span><span class=p>:]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Handle base prefix</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>base</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>base</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>10</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;0&#39;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>switch</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>case</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=mi>2</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nf>lower</span><span class=p>(</span><span class=nx>s</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;x&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>base</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>16</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>s</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=mi>2</span><span class=p>:]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>case</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=mi>2</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nf>lower</span><span class=p>(</span><span class=nx>s</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;o&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>base</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>8</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>s</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=mi>2</span><span class=p>:]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>case</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=mi>2</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nf>lower</span><span class=p>(</span><span class=nx>s</span><span class=p>[</span><span class=mi>1</span><span class=p>])</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;b&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>base</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>2</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>s</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=mi>2</span><span class=p>:]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>default</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>base</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>8</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>s</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=mi>1</span><span class=p>:]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Calculate overflow bounds</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>cutoff</span><span class=w> </span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>switch</span><span class=w> </span><span class=nx>bitSize</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=mi>8</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>cutoff</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>uint64</span><span class=p>(</span><span class=mi>1</span><span class=o>&lt;&lt;</span><span class=mi>7</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=mi>16</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>cutoff</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>uint64</span><span class=p>(</span><span class=mi>1</span><span class=o>&lt;&lt;</span><span class=mi>15</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=mi>32</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>cutoff</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>uint64</span><span class=p>(</span><span class=mi>1</span><span class=o>&lt;&lt;</span><span class=mi>31</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=mi>64</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>cutoff</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>uint64</span><span class=p>(</span><span class=mi>1</span><span class=o>&lt;&lt;</span><span class=mi>63</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>neg</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>cutoff</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Character-by-character conversion</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=p>[]</span><span class=nb>byte</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=kd>var</span><span class=w> </span><span class=nx>d</span><span class=w> </span><span class=kt>byte</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>switch</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>case</span><span class=w> </span><span class=sc>&#39;0&#39;</span><span class=w> </span><span class=o>&lt;=</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>&lt;=</span><span class=w> </span><span class=sc>&#39;9&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>d</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=sc>&#39;0&#39;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>case</span><span class=w> </span><span class=sc>&#39;a&#39;</span><span class=w> </span><span class=o>&lt;=</span><span class=w> </span><span class=nf>lower</span><span class=p>(</span><span class=nx>c</span><span class=p>)</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nf>lower</span><span class=p>(</span><span class=nx>c</span><span class=p>)</span><span class=w> </span><span class=o>&lt;=</span><span class=w> </span><span class=sc>&#39;z&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>d</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nf>lower</span><span class=p>(</span><span class=nx>c</span><span class=p>)</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=sc>&#39;a&#39;</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=mi>10</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>default</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nf>syntaxError</span><span class=p>(</span><span class=s>&#34;ParseInt&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>s0</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>d</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=nb>byte</span><span class=p>(</span><span class=nx>base</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nf>syntaxError</span><span class=p>(</span><span class=s>&#34;ParseInt&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>s0</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Overflow check (before multiplication)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=nx>cutoff</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nf>rangeError</span><span class=p>(</span><span class=s>&#34;ParseInt&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>s0</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>n</span><span class=w> </span><span class=o>*=</span><span class=w> </span><span class=nb>uint64</span><span class=p>(</span><span class=nx>base</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>n1</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=nb>uint64</span><span class=p>(</span><span class=nx>d</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Check addition overflow</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>n1</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>||</span><span class=w> </span><span class=nx>n1</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=nx>cutoff</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nf>rangeError</span><span class=p>(</span><span class=s>&#34;ParseInt&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>s0</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>n</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>n1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>neg</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=o>-</span><span class=nb>int64</span><span class=p>(</span><span class=nx>n</span><span class=p>),</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nb>int64</span><span class=p>(</span><span class=nx>n</span><span class=p>),</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=24-design-highlights>2.4 Design Highlights</h3><ol><li><strong>Overflow detection before operation</strong>: Avoids detecting after already overflowing</li><li><strong>Detailed error info</strong>: Includes original input for debugging</li><li><strong>Unified signed/unsigned handling</strong>: Calculate with uint64, convert at end</li><li><strong>Auto base detection</strong>: 0x, 0o, 0b prefixes</li></ol><h2 id=3-state-machine-implementation>3. State Machine Implementation</h2><h3 id=31-why-state-machine>3.1 Why State Machine?</h3><p>Complex parsing needs are hard to handle cleanly with if-else:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Valid input examples:
+</span></span><span class=line><span class=cl>&#34;  -42&#34;      → -42
+</span></span><span class=line><span class=cl>&#34;0x1A&#34;       → 26 (auto-detect base 16)
+</span></span><span class=line><span class=cl>&#34;   +0o17&#34;   → 15 (auto-detect base 8)
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Invalid input examples:
+</span></span><span class=line><span class=cl>&#34;--42&#34;       → syntax error
+</span></span><span class=line><span class=cl>&#34;0x&#34;         → syntax error (no digits)
+</span></span><span class=line><span class=cl>&#34;123abc&#34;     → ? (Go errors, some languages accept 123)
+</span></span></code></pre></td></tr></table></div></div><h3 id=32-state-machine-model>3.2 State Machine Model</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>         ┌─────────────────────────────────────────────────────┐
+</span></span><span class=line><span class=cl>         │                                                      │
+</span></span><span class=line><span class=cl>    ┌────▼────┐  space   ┌─────────┐  +/-   ┌─────────┐         │
+</span></span><span class=line><span class=cl>    │  START  │────────▶│ SPACES  │───────▶│  SIGN   │         │
+</span></span><span class=line><span class=cl>    └─────────┘         └────┬────┘        └────┬────┘         │
+</span></span><span class=line><span class=cl>         │                   │                   │              │
+</span></span><span class=line><span class=cl>         │ 0                 │ digit             │ digit        │
+</span></span><span class=line><span class=cl>         ▼                   │                   │              │
+</span></span><span class=line><span class=cl>    ┌─────────┐              │                   │              │
+</span></span><span class=line><span class=cl>    │ PREFIX  │◄─────────────┴───────────────────┘              │
+</span></span><span class=line><span class=cl>    └────┬────┘                                                 │
+</span></span><span class=line><span class=cl>         │ x/o/b/digit                                          │
+</span></span><span class=line><span class=cl>         ▼                                                      │
+</span></span><span class=line><span class=cl>    ┌─────────┐  digit                                          │
+</span></span><span class=line><span class=cl>    │ DIGITS  │────────┐                                        │
+</span></span><span class=line><span class=cl>    └────┬────┘        │                                        │
+</span></span><span class=line><span class=cl>         │             │                                        │
+</span></span><span class=line><span class=cl>         │ non-digit   │                                        │
+</span></span><span class=line><span class=cl>         ▼             ▼                                        │
+</span></span><span class=line><span class=cl>    ┌─────────┐   ┌─────────┐                                   │
+</span></span><span class=line><span class=cl>    │  ERROR  │   │   END   │───────────────────────────────────┘
+</span></span><span class=line><span class=cl>    └─────────┘   └─────────┘
+</span></span></code></pre></td></tr></table></div></div><h3 id=33-go-implementation>3.3 Go Implementation</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>  1
+</span><span class=lnt>  2
+</span><span class=lnt>  3
+</span><span class=lnt>  4
+</span><span class=lnt>  5
+</span><span class=lnt>  6
+</span><span class=lnt>  7
+</span><span class=lnt>  8
+</span><span class=lnt>  9
+</span><span class=lnt> 10
+</span><span class=lnt> 11
+</span><span class=lnt> 12
+</span><span class=lnt> 13
+</span><span class=lnt> 14
+</span><span class=lnt> 15
+</span><span class=lnt> 16
+</span><span class=lnt> 17
+</span><span class=lnt> 18
+</span><span class=lnt> 19
+</span><span class=lnt> 20
+</span><span class=lnt> 21
+</span><span class=lnt> 22
+</span><span class=lnt> 23
+</span><span class=lnt> 24
+</span><span class=lnt> 25
+</span><span class=lnt> 26
+</span><span class=lnt> 27
+</span><span class=lnt> 28
+</span><span class=lnt> 29
+</span><span class=lnt> 30
+</span><span class=lnt> 31
+</span><span class=lnt> 32
+</span><span class=lnt> 33
+</span><span class=lnt> 34
+</span><span class=lnt> 35
+</span><span class=lnt> 36
+</span><span class=lnt> 37
+</span><span class=lnt> 38
+</span><span class=lnt> 39
+</span><span class=lnt> 40
+</span><span class=lnt> 41
+</span><span class=lnt> 42
+</span><span class=lnt> 43
+</span><span class=lnt> 44
+</span><span class=lnt> 45
+</span><span class=lnt> 46
+</span><span class=lnt> 47
+</span><span class=lnt> 48
+</span><span class=lnt> 49
+</span><span class=lnt> 50
+</span><span class=lnt> 51
+</span><span class=lnt> 52
+</span><span class=lnt> 53
+</span><span class=lnt> 54
+</span><span class=lnt> 55
+</span><span class=lnt> 56
+</span><span class=lnt> 57
+</span><span class=lnt> 58
+</span><span class=lnt> 59
+</span><span class=lnt> 60
+</span><span class=lnt> 61
+</span><span class=lnt> 62
+</span><span class=lnt> 63
+</span><span class=lnt> 64
+</span><span class=lnt> 65
+</span><span class=lnt> 66
+</span><span class=lnt> 67
+</span><span class=lnt> 68
+</span><span class=lnt> 69
+</span><span class=lnt> 70
+</span><span class=lnt> 71
+</span><span class=lnt> 72
+</span><span class=lnt> 73
+</span><span class=lnt> 74
+</span><span class=lnt> 75
+</span><span class=lnt> 76
+</span><span class=lnt> 77
+</span><span class=lnt> 78
+</span><span class=lnt> 79
+</span><span class=lnt> 80
+</span><span class=lnt> 81
+</span><span class=lnt> 82
+</span><span class=lnt> 83
+</span><span class=lnt> 84
+</span><span class=lnt> 85
+</span><span class=lnt> 86
+</span><span class=lnt> 87
+</span><span class=lnt> 88
+</span><span class=lnt> 89
+</span><span class=lnt> 90
+</span><span class=lnt> 91
+</span><span class=lnt> 92
+</span><span class=lnt> 93
+</span><span class=lnt> 94
+</span><span class=lnt> 95
+</span><span class=lnt> 96
+</span><span class=lnt> 97
+</span><span class=lnt> 98
+</span><span class=lnt> 99
+</span><span class=lnt>100
+</span><span class=lnt>101
+</span><span class=lnt>102
+</span><span class=lnt>103
+</span><span class=lnt>104
+</span><span class=lnt>105
+</span><span class=lnt>106
+</span><span class=lnt>107
+</span><span class=lnt>108
+</span><span class=lnt>109
+</span><span class=lnt>110
+</span><span class=lnt>111
+</span><span class=lnt>112
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>State</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>const</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>StateStart</span><span class=w> </span><span class=nx>State</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=kc>iota</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>StateSign</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>StatePrefix</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>StateDigits</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>StateEnd</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>StateError</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>Parser</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>state</span><span class=w>   </span><span class=nx>State</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>sign</span><span class=w>    </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>base</span><span class=w>    </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>result</span><span class=w>  </span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>bitSize</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>cutoff</span><span class=w>  </span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>NewParser</span><span class=p>(</span><span class=nx>bitSize</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=o>*</span><span class=nx>Parser</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>cutoff</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>uint64</span><span class=p>(</span><span class=mi>1</span><span class=o>&lt;&lt;</span><span class=p>(</span><span class=nx>bitSize</span><span class=o>-</span><span class=mi>1</span><span class=p>)</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=o>&amp;</span><span class=nx>Parser</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>state</span><span class=p>:</span><span class=w>   </span><span class=nx>StateStart</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>sign</span><span class=p>:</span><span class=w>    </span><span class=mi>1</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>base</span><span class=p>:</span><span class=w>    </span><span class=mi>10</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>bitSize</span><span class=p>:</span><span class=w> </span><span class=nx>bitSize</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>cutoff</span><span class=p>:</span><span class=w>  </span><span class=nx>cutoff</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>Parser</span><span class=p>)</span><span class=w> </span><span class=nf>Feed</span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=kt>byte</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>switch</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=nx>StateStart</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nf>handleStart</span><span class=p>(</span><span class=nx>c</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=nx>StateSign</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nf>handleSign</span><span class=p>(</span><span class=nx>c</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=nx>StatePrefix</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nf>handlePrefix</span><span class=p>(</span><span class=nx>c</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=nx>StateDigits</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nf>handleDigits</span><span class=p>(</span><span class=nx>c</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>default</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;invalid state&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>Parser</span><span class=p>)</span><span class=w> </span><span class=nf>handleStart</span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=kt>byte</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>switch</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39; &#39;</span><span class=w> </span><span class=o>||</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;\t&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Stay in Start state</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;+&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>StateSign</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;-&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>sign</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=o>-</span><span class=mi>1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>cutoff</span><span class=o>++</span><span class=w> </span><span class=c1>// Negative can be one more</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>StateSign</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=sc>&#39;0&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>StatePrefix</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=sc>&#39;1&#39;</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>&lt;=</span><span class=w> </span><span class=sc>&#39;9&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>StateDigits</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nf>addDigit</span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=sc>&#39;0&#39;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>default</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>StateError</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;invalid character&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>Parser</span><span class=p>)</span><span class=w> </span><span class=nf>handlePrefix</span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=kt>byte</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>switch</span><span class=w> </span><span class=nf>lower</span><span class=p>(</span><span class=nx>c</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=sc>&#39;x&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>base</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>16</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>StateDigits</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=sc>&#39;o&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>base</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>8</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>StateDigits</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=sc>&#39;b&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>base</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>2</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>StateDigits</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>default</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>base</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>8</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>StateDigits</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nf>addDigit</span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=sc>&#39;0&#39;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>Parser</span><span class=p>)</span><span class=w> </span><span class=nf>addDigit</span><span class=p>(</span><span class=nx>d</span><span class=w> </span><span class=kt>byte</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nx>result</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nx>cutoff</span><span class=o>/</span><span class=nb>uint64</span><span class=p>(</span><span class=nx>p</span><span class=p>.</span><span class=nx>base</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;overflow&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>p</span><span class=p>.</span><span class=nx>result</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nx>result</span><span class=o>*</span><span class=nb>uint64</span><span class=p>(</span><span class=nx>p</span><span class=p>.</span><span class=nx>base</span><span class=p>)</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=nb>uint64</span><span class=p>(</span><span class=nx>d</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nx>result</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nx>cutoff</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;overflow&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>Parser</span><span class=p>)</span><span class=w> </span><span class=nf>Result</span><span class=p>()</span><span class=w> </span><span class=p>(</span><span class=kt>int64</span><span class=p>,</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nx>state</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=nx>StateError</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;parse error&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nx>sign</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=o>-</span><span class=nb>int64</span><span class=p>(</span><span class=nx>p</span><span class=p>.</span><span class=nx>result</span><span class=p>),</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nb>int64</span><span class=p>(</span><span class=nx>p</span><span class=p>.</span><span class=nx>result</span><span class=p>),</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=4-rust-standard-library-comparison>4. Rust Standard Library Comparison</h2><h3 id=41-rusts-from_str>4.1 Rust&rsquo;s from_str</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=c1>// Rust uses trait implementation
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=k>impl</span><span class=w> </span><span class=n>FromStr</span><span class=w> </span><span class=k>for</span><span class=w> </span><span class=kt>i32</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>type</span> <span class=nb>Err</span> <span class=o>=</span><span class=w> </span><span class=n>ParseIntError</span><span class=p>;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>fn</span> <span class=nf>from_str</span><span class=p>(</span><span class=n>s</span>: <span class=kp>&amp;</span><span class=kt>str</span><span class=p>)</span><span class=w> </span>-&gt; <span class=nb>Result</span><span class=o>&lt;</span><span class=kt>i32</span><span class=p>,</span><span class=w> </span><span class=n>ParseIntError</span><span class=o>&gt;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=kt>i32</span>::<span class=n>from_str_radix</span><span class=p>(</span><span class=n>s</span><span class=p>,</span><span class=w> </span><span class=mi>10</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Usage
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kd>let</span><span class=w> </span><span class=n>n</span>: <span class=kt>i32</span> <span class=o>=</span><span class=w> </span><span class=s>&#34;42&#34;</span><span class=p>.</span><span class=n>parse</span><span class=p>()</span><span class=o>?</span><span class=p>;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>let</span><span class=w> </span><span class=n>n</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=kt>i32</span>::<span class=n>from_str_radix</span><span class=p>(</span><span class=s>&#34;0x2A&#34;</span><span class=p>,</span><span class=w> </span><span class=mi>16</span><span class=p>)</span><span class=o>?</span><span class=p>;</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=42-rusts-error-handling>4.2 Rust&rsquo;s Error Handling</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=k>pub</span><span class=w> </span><span class=k>enum</span> <span class=nc>IntErrorKind</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=n>Empty</span><span class=p>,</span><span class=w>           </span><span class=c1>// Empty string
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=w>    </span><span class=n>InvalidDigit</span><span class=p>,</span><span class=w>    </span><span class=c1>// Invalid character
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=w>    </span><span class=n>PosOverflow</span><span class=p>,</span><span class=w>     </span><span class=c1>// Positive overflow
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=w>    </span><span class=n>NegOverflow</span><span class=p>,</span><span class=w>     </span><span class=c1>// Negative overflow
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=w>    </span><span class=n>Zero</span><span class=p>,</span><span class=w>            </span><span class=c1>// Unexpected zero (some contexts)
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=43-comparison>4.3 Comparison</h3><table><thead><tr><th>Feature</th><th>Go</th><th>Rust</th></tr></thead><tbody><tr><td>Return type</td><td>(int64, error)</td><td>Result&lt;T, ParseIntError></td></tr><tr><td>Base</td><td>Parameter</td><td>Method name distinction</td></tr><tr><td>Error granularity</td><td>Error interface</td><td>Enum type</td></tr><tr><td>Sign handling</td><td>Internal</td><td>Type system distinction</td></tr></tbody></table><h2 id=5-practical-applications>5. Practical Applications</h2><h3 id=51-config-file-parsing>5.1 Config File Parsing</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>Config</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Port</span><span class=w>     </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Timeout</span><span class=w>  </span><span class=nx>time</span><span class=p>.</span><span class=nx>Duration</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>MaxSize</span><span class=w>  </span><span class=kt>int64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>parseSize</span><span class=p>(</span><span class=nx>s</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=kt>int64</span><span class=p>,</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>s</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>strings</span><span class=p>.</span><span class=nf>TrimSpace</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Support K, M, G suffixes</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>unit</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>int64</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>switch</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=nb>len</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=o>-</span><span class=mi>1</span><span class=p>]</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=sc>&#39;K&#39;</span><span class=p>,</span><span class=w> </span><span class=sc>&#39;k&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>unit</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1024</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>s</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>s</span><span class=p>[:</span><span class=nb>len</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=o>-</span><span class=mi>1</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=sc>&#39;M&#39;</span><span class=p>,</span><span class=w> </span><span class=sc>&#39;m&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>unit</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1024</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=mi>1024</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>s</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>s</span><span class=p>[:</span><span class=nb>len</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=o>-</span><span class=mi>1</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>case</span><span class=w> </span><span class=sc>&#39;G&#39;</span><span class=p>,</span><span class=w> </span><span class=sc>&#39;g&#39;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>unit</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1024</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=mi>1024</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=mi>1024</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>s</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>s</span><span class=p>[:</span><span class=nb>len</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span><span class=o>-</span><span class=mi>1</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>n</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>strconv</span><span class=p>.</span><span class=nf>ParseInt</span><span class=p>(</span><span class=nx>s</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=mi>64</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Check multiplication overflow</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nx>unit</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=nx>math</span><span class=p>.</span><span class=nx>MaxInt64</span><span class=o>/</span><span class=nx>n</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;size overflow&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=nx>unit</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Usage</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nf>parseSize</span><span class=p>(</span><span class=s>&#34;512M&#34;</span><span class=p>)</span><span class=w>  </span><span class=c1>// 536870912</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nf>parseSize</span><span class=p>(</span><span class=s>&#34;0x100&#34;</span><span class=p>)</span><span class=w> </span><span class=c1>// 256</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=52-command-line-arguments>5.2 Command Line Arguments</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>parsePort</span><span class=p>(</span><span class=nx>s</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=kt>int</span><span class=p>,</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>port</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>strconv</span><span class=p>.</span><span class=nf>ParseInt</span><span class=p>(</span><span class=nx>s</span><span class=p>,</span><span class=w> </span><span class=mi>10</span><span class=p>,</span><span class=w> </span><span class=mi>16</span><span class=p>)</span><span class=w>  </span><span class=c1>// 16 bits enough for port</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;invalid port: %w&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>port</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>||</span><span class=w> </span><span class=nx>port</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=mi>65535</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;port must be 1-65535, got %d&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>port</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nb>int</span><span class=p>(</span><span class=nx>port</span><span class=p>),</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=6-summary>6. Summary</h2><table><thead><tr><th>Level</th><th>Implementation</th></tr></thead><tbody><tr><td>Interview</td><td>if-else, basic cases only</td></tr><tr><td>Production</td><td>State machine, complete error handling</td></tr><tr><td>Standard library</td><td>Highly optimized, multi-type multi-base</td></tr></tbody></table><p><strong>Key takeaways</strong>:</p><ol><li><strong>Overflow detection before operation</strong>, not after</li><li><strong>State machines</strong> make complex parsing logic clearer</li><li><strong>Error messages should be detailed</strong>, include original input</li><li><strong>Boundary conditions</strong> are what separate interview code from production code</li></ol></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2022-04-14</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/220414-atoi/ data-title="Production-Grade String Parsing: From atoi to State Machine" data-hashtags="State Machine,Source Code Analysis,Strings"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/220414-atoi/ data-hashtag="State Machine"><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/220414-atoi/ data-title="Production-Grade String Parsing: From atoi to State Machine"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/220414-atoi/ data-title="Production-Grade String Parsing: From atoi to State Machine"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/220414-atoi/ data-title="Production-Grade String Parsing: From atoi to State Machine"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/state-machine/>State Machine</a>,&nbsp;<a href=/tags/source-code-analysis/>Source Code Analysis</a>,&nbsp;<a href=/tags/strings/>Strings</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/220316-go1.18/ class=prev rel=prev title="Go Generics in Practice: Pitfalls and Best Practices"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Go Generics in Practice: Pitfalls and Best Practices</a>
+<a href=/posts/220815-disk-health-agent/ class=next rel=next title="NAS Disk Health Monitoring: From smartctl to Custom Agent">NAS Disk Health Monitoring: From smartctl to Custom Agent<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

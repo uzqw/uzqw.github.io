@@ -1,0 +1,336 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms - zqw's notes</title><meta name=Description content="A deep dive into TLS handshake optimization: TLS 1.3, OCSP Stapling, certificate chain tuning, and Session Resumption explained with real-world examples."><meta property="og:url" content="https://uzqw.github.io/posts/211226-https/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms"><meta property="og:description" content="A deep dive into TLS handshake optimization: TLS 1.3, OCSP Stapling, certificate chain tuning, and Session Resumption explained with real-world examples."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-12-26T12:06:00+08:00"><meta property="article:modified_time" content="2022-03-17T12:00:00+08:00"><meta property="article:tag" content="HTTPS"><meta property="article:tag" content="TLS"><meta property="article:tag" content="Performance"><meta name=twitter:card content="summary"><meta name=twitter:title content="HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms"><meta name=twitter:description content="A deep dive into TLS handshake optimization: TLS 1.3, OCSP Stapling, certificate chain tuning, and Session Resumption explained with real-world examples."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/211226-https/><link rel=prev href=https://uzqw.github.io/posts/211221-singleflight/><link rel=next href=https://uzqw.github.io/posts/220101-http3/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/211226-https\/"},"genre":"posts","keywords":"HTTPS, TLS, Performance","wordcount":1198,"url":"https:\/\/uzqw.github.io\/posts\/211226-https\/","datePublished":"2021-12-26T12:06:00+08:00","dateModified":"2022-03-17T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"A deep dive into TLS handshake optimization: TLS 1.3, OCSP Stapling, certificate chain tuning, and Session Resumption explained with real-world examples."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/211226-https/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/211226-https/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/211226-https/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/211226-https/ selected>English</option><option value=https://uzqw.net/posts/211226-https/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/211226-https/ selected>English</option><option value=https://uzqw.net/posts/211226-https/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/networking/><i class="far fa-folder fa-fw" aria-hidden=true></i>Networking</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2021-12-26>2021-12-26</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1198 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;6 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-diagnosing-the-problem>1. Diagnosing the Problem</a><ul><li><a href=#11-packet-analysis>1.1 Packet Analysis</a></li><li><a href=#12-breaking-down-the-handshake>1.2 Breaking Down the Handshake</a></li></ul></li><li><a href=#2-tls-handshake-internals>2. TLS Handshake Internals</a><ul><li><a href=#21-tls-12-handshake-2-rtt>2.1 TLS 1.2 Handshake (2-RTT)</a></li><li><a href=#22-tls-13-handshake-1-rtt>2.2 TLS 1.3 Handshake (1-RTT)</a></li><li><a href=#23-0-rtt-tls-13-early-data>2.3 0-RTT (TLS 1.3 Early Data)</a></li></ul></li><li><a href=#3-optimization-steps>3. Optimization Steps</a><ul><li><a href=#31-enable-tls-13>3.1 Enable TLS 1.3</a></li><li><a href=#32-ocsp-stapling>3.2 OCSP Stapling</a></li><li><a href=#33-certificate-chain-optimization>3.3 Certificate Chain Optimization</a></li><li><a href=#34-session-resumption>3.4 Session Resumption</a></li><li><a href=#35-switch-to-ecdsa-certificates>3.5 Switch to ECDSA Certificates</a></li><li><a href=#36-enable-http2>3.6 Enable HTTP/2</a></li></ul></li><li><a href=#4-performance-comparison>4. Performance Comparison</a><ul><li><a href=#41-before-vs-after>4.1 Before vs After</a></li><li><a href=#42-time-savings-breakdown>4.2 Time Savings Breakdown</a></li></ul></li><li><a href=#5-monitoring--verification>5. Monitoring & Verification</a><ul><li><a href=#51-ssl-labs-test>5.1 SSL Labs Test</a></li><li><a href=#52-chrome-devtools>5.2 Chrome DevTools</a></li><li><a href=#53-prometheus-monitoring>5.3 Prometheus Monitoring</a></li></ul></li><li><a href=#6-complete-config-example>6. Complete Config Example</a></li><li><a href=#7-summary>7. Summary</a></li></ul></nav></div></div><div class=content id=content><p>Users were complaining about slow page loads. Chrome DevTools showed a TTFB (Time To First Byte) of 400ms, with HTTPS handshake alone taking 200ms. This post documents how I got that down to 50ms.</p><h2 id=1-diagnosing-the-problem>1. Diagnosing the Problem</h2><h3 id=11-packet-analysis>1.1 Packet Analysis</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Measure timing for each phase with curl</span>
+</span></span><span class=line><span class=cl>curl -w <span class=s2>&#34;@curl-format.txt&#34;</span> -o /dev/null -s https://terra-nas.com
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># curl-format.txt:</span>
+</span></span><span class=line><span class=cl><span class=c1>#   time_namelookup:  %{time_namelookup}s\n</span>
+</span></span><span class=line><span class=cl><span class=c1>#   time_connect:     %{time_connect}s\n</span>
+</span></span><span class=line><span class=cl><span class=c1>#   time_appconnect:  %{time_appconnect}s\n</span>
+</span></span><span class=line><span class=cl><span class=c1>#   time_starttransfer: %{time_starttransfer}s\n</span>
+</span></span><span class=line><span class=cl><span class=c1>#   time_total:       %{time_total}s\n</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Results</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>time_namelookup:  0.020s   # DNS
+</span></span><span class=line><span class=cl>time_connect:     0.060s   # TCP (RTT ≈ 40ms)
+</span></span><span class=line><span class=cl>time_appconnect:  0.260s   # TLS handshake complete!
+</span></span><span class=line><span class=cl>time_starttransfer: 0.280s
+</span></span><span class=line><span class=cl>time_total:       0.350s
+</span></span></code></pre></td></tr></table></div></div><p><strong>TLS handshake took 200ms</strong> — the time between TCP connection and application data transfer.</p><h3 id=12-breaking-down-the-handshake>1.2 Breaking Down the Handshake</h3><p>Using <code>openssl s_client</code> for detailed analysis:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>openssl s_client -connect terra-nas.com:443 -status 2&gt;<span class=p>&amp;</span><span class=m>1</span> <span class=p>|</span> head -50
+</span></span></code></pre></td></tr></table></div></div><p>Issues found:</p><ol><li>Server was using <strong>TLS 1.2</strong> (requires 2-RTT handshake)</li><li><strong>OCSP response</strong> — client was fetching it separately (extra latency)</li><li><strong>Certificate chain</strong> included 3 certificates (more data to transfer)</li></ol><h2 id=2-tls-handshake-internals>2. TLS Handshake Internals</h2><h3 id=21-tls-12-handshake-2-rtt>2.1 TLS 1.2 Handshake (2-RTT)</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Client                              Server
+</span></span><span class=line><span class=cl>  |                                    |
+</span></span><span class=line><span class=cl>  |------- ClientHello ---------------&gt;|  RTT 1
+</span></span><span class=line><span class=cl>  |&lt;------ ServerHello + Cert ---------|  
+</span></span><span class=line><span class=cl>  |&lt;------ ServerKeyExchange ----------|
+</span></span><span class=line><span class=cl>  |&lt;------ ServerHelloDone ------------|
+</span></span><span class=line><span class=cl>  |                                    |
+</span></span><span class=line><span class=cl>  |------- ClientKeyExchange ---------&gt;|  RTT 2
+</span></span><span class=line><span class=cl>  |------- ChangeCipherSpec ----------&gt;|
+</span></span><span class=line><span class=cl>  |------- Finished ------------------&gt;|
+</span></span><span class=line><span class=cl>  |&lt;------ ChangeCipherSpec -----------|
+</span></span><span class=line><span class=cl>  |&lt;------ Finished -------------------|
+</span></span><span class=line><span class=cl>  |                                    |
+</span></span><span class=line><span class=cl>  |======= Application Data ==========&gt;|  Finally can send data!
+</span></span></code></pre></td></tr></table></div></div><p><strong>Latency</strong>: At least 2 RTTs. With RTT=40ms, TLS handshake ≥ 80ms.</p><p>But we measured 200ms — there&rsquo;s additional overhead somewhere.</p><h3 id=22-tls-13-handshake-1-rtt>2.2 TLS 1.3 Handshake (1-RTT)</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Client                              Server
+</span></span><span class=line><span class=cl>  |                                    |
+</span></span><span class=line><span class=cl>  |------- ClientHello + KeyShare ----&gt;|  RTT 1
+</span></span><span class=line><span class=cl>  |&lt;------ ServerHello + KeyShare -----|
+</span></span><span class=line><span class=cl>  |&lt;------ EncryptedExtensions --------|
+</span></span><span class=line><span class=cl>  |&lt;------ Certificate ----------------|
+</span></span><span class=line><span class=cl>  |&lt;------ CertificateVerify ----------|
+</span></span><span class=line><span class=cl>  |&lt;------ Finished -------------------|
+</span></span><span class=line><span class=cl>  |------- Finished ------------------&gt;|
+</span></span><span class=line><span class=cl>  |                                    |
+</span></span><span class=line><span class=cl>  |======= Application Data ==========&gt;|  Can send data after 1-RTT!
+</span></span></code></pre></td></tr></table></div></div><p><strong>Key optimization</strong>: ClientHello includes key exchange parameters upfront, saving one RTT.</p><h3 id=23-0-rtt-tls-13-early-data>2.3 0-RTT (TLS 1.3 Early Data)</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl># After first connection, server sends Session Ticket
+</span></span><span class=line><span class=cl># Subsequent connections can send encrypted data immediately
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Client                              Server
+</span></span><span class=line><span class=cl>  |                                    |
+</span></span><span class=line><span class=cl>  |------- ClientHello + EarlyData ---&gt;|  0-RTT!
+</span></span><span class=line><span class=cl>  |======= Application data already flowing ======&gt;|
+</span></span><span class=line><span class=cl>  |&lt;------ ServerHello + ... ----------|
+</span></span></code></pre></td></tr></table></div></div><p><strong>Heads up</strong>: 0-RTT is vulnerable to replay attacks — only use for idempotent requests.</p><h2 id=3-optimization-steps>3. Optimization Steps</h2><h3 id=31-enable-tls-13>3.1 Enable TLS 1.3</h3><p><strong>Nginx config</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=k>server</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kn>listen</span> <span class=mi>443</span> <span class=s>ssl</span> <span class=s>http2</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=kn>ssl_protocols</span> <span class=s>TLSv1.2</span> <span class=s>TLSv1.3</span><span class=p>;</span>  <span class=c1># Support both 1.2 and 1.3
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kn>ssl_prefer_server_ciphers</span> <span class=no>off</span><span class=p>;</span>   <span class=c1># Not needed for TLS 1.3
+</span></span></span><span class=line><span class=cl><span class=c1></span>    
+</span></span><span class=line><span class=cl>    <span class=c1># TLS 1.3 cipher suites
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kn>ssl_ciphers</span> <span class=s>ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1># Enable 0-RTT (use with caution)
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kn>ssl_early_data</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Result</strong>: TLS handshake drops from 2-RTT to 1-RTT, saving 40ms.</p><h3 id=32-ocsp-stapling>3.2 OCSP Stapling</h3><p><strong>The problem</strong>: Clients need to verify if the certificate is revoked. Traditional approach sends an OCSP request to the CA.</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Traditional flow:
+</span></span><span class=line><span class=cl>Client --&gt; Server: Get certificate
+</span></span><span class=line><span class=cl>Client --&gt; CA (OCSP): Is this cert valid?  ← Extra RTT!
+</span></span><span class=line><span class=cl>CA --&gt; Client: Yes
+</span></span><span class=line><span class=cl>Client --&gt; Server: Continue handshake
+</span></span></code></pre></td></tr></table></div></div><p><strong>OCSP Stapling</strong>: Server pre-fetches the OCSP response and sends it during the handshake.</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=k>ssl_stapling</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=k>ssl_stapling_verify</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=k>ssl_trusted_certificate</span> <span class=s>/path/to/chain.pem</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Set OCSP responder
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=k>resolver</span> <span class=n>8.8.8.8</span> <span class=s>valid=300s</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=k>resolver_timeout</span> <span class=s>5s</span><span class=p>;</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Verify it&rsquo;s working</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>openssl s_client -connect terra-nas.com:443 -status 2&gt;<span class=p>&amp;</span><span class=m>1</span> <span class=p>|</span> grep -A <span class=m>15</span> <span class=s2>&#34;OCSP&#34;</span>
+</span></span><span class=line><span class=cl><span class=c1># OCSP Response Status: successful</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Result</strong>: Eliminates client-side OCSP lookup, saving 50-100ms.</p><h3 id=33-certificate-chain-optimization>3.3 Certificate Chain Optimization</h3><p><strong>The problem</strong>: Full certificate chain might have 3-4 certs, increasing transfer size.</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Check the certificate chain</span>
+</span></span><span class=line><span class=cl>openssl s_client -connect terra-nas.com:443 -showcerts 2&gt;/dev/null <span class=p>|</span> grep <span class=s2>&#34;s:&#34;</span>
+</span></span><span class=line><span class=cl><span class=c1># s:/CN=terra-nas.com</span>
+</span></span><span class=line><span class=cl><span class=c1># s:/CN=Let&#39;s Encrypt Authority X3  # Intermediate cert</span>
+</span></span><span class=line><span class=cl><span class=c1># s:/CN=DST Root CA X3              # Root cert (shouldn&#39;t be sent!)</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Fix</strong>: Only send site cert + intermediate cert. Skip root cert (browsers already have it).</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=c1># Correct certificate file should contain:
+</span></span></span><span class=line><span class=cl><span class=c1># 1. Site certificate
+</span></span></span><span class=line><span class=cl><span class=c1># 2. Intermediate certificate
+</span></span></span><span class=line><span class=cl><span class=c1># (NOT the root certificate)
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl><span class=k>ssl_certificate</span> <span class=s>/path/to/fullchain.pem</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=k>ssl_certificate_key</span> <span class=s>/path/to/privkey.pem</span><span class=p>;</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Result</strong>: Reduces transfer by ~1KB.</p><h3 id=34-session-resumption>3.4 Session Resumption</h3><p><strong>Session Tickets (stateless resumption)</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=k>ssl_session_tickets</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=k>ssl_session_timeout</span> <span class=s>1d</span><span class=p>;</span>  <span class=c1># 24 hours
+</span></span></span><span class=line><span class=cl><span class=c1></span>
+</span></span><span class=line><span class=cl><span class=c1># Custom ticket key (share across servers if needed)
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=k>ssl_session_ticket_key</span> <span class=s>/path/to/ticket.key</span><span class=p>;</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Session Cache (stateful resumption)</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=k>ssl_session_cache</span> <span class=s>shared:SSL:10m</span><span class=p>;</span>  <span class=c1># 10MB shared cache
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=k>ssl_session_timeout</span> <span class=s>1d</span><span class=p>;</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Result</strong>: Returning visitors get 1-RTT or even 0-RTT handshakes.</p><h3 id=35-switch-to-ecdsa-certificates>3.5 Switch to ECDSA Certificates</h3><p>RSA certificate verification is slower. ECDSA is faster and has shorter keys.</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Generate ECDSA private key</span>
+</span></span><span class=line><span class=cl>openssl ecparam -genkey -name prime256v1 -out privkey.pem
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Generate CSR</span>
+</span></span><span class=line><span class=cl>openssl req -new -key privkey.pem -out csr.pem
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Request certificate (Let&#39;s Encrypt supports ECDSA)</span>
+</span></span><span class=line><span class=cl>certbot certonly --csr csr.pem
+</span></span></code></pre></td></tr></table></div></div><p><strong>Comparison</strong>:</p><table><thead><tr><th>Type</th><th>Key Length</th><th>Security Equivalent</th><th>Signing Speed</th></tr></thead><tbody><tr><td>RSA 2048</td><td>2048 bits</td><td>112 bits</td><td>Slow</td></tr><tr><td>ECDSA P-256</td><td>256 bits</td><td>128 bits</td><td>3-4x faster</td></tr></tbody></table><h3 id=36-enable-http2>3.6 Enable HTTP/2</h3><p>HTTP/2 multiplexes requests over a single TCP connection, so TLS handshake only happens once.</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=k>listen</span> <span class=mi>443</span> <span class=s>ssl</span> <span class=s>http2</span><span class=p>;</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=4-performance-comparison>4. Performance Comparison</h2><h3 id=41-before-vs-after>4.1 Before vs After</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Before optimization</span>
+</span></span><span class=line><span class=cl>curl -w <span class=s2>&#34;TLS: %{time_appconnect}s\n&#34;</span> -o /dev/null -s https://terra-nas.com
+</span></span><span class=line><span class=cl><span class=c1># TLS: 0.260s</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># After optimization</span>
+</span></span><span class=line><span class=cl>curl -w <span class=s2>&#34;TLS: %{time_appconnect}s\n&#34;</span> -o /dev/null -s https://terra-nas.com
+</span></span><span class=line><span class=cl><span class=c1># TLS: 0.050s</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=42-time-savings-breakdown>4.2 Time Savings Breakdown</h3><table><thead><tr><th>Optimization</th><th>Time Saved</th></tr></thead><tbody><tr><td>TLS 1.3 (1-RTT)</td><td>40ms</td></tr><tr><td>OCSP Stapling</td><td>60ms</td></tr><tr><td>Session Resumption</td><td>40ms</td></tr><tr><td>Certificate chain</td><td>10ms</td></tr><tr><td>ECDSA certificate</td><td>5ms</td></tr><tr><td><strong>Total</strong></td><td><strong>~150ms</strong></td></tr></tbody></table><h2 id=5-monitoring--verification>5. Monitoring & Verification</h2><h3 id=51-ssl-labs-test>5.1 SSL Labs Test</h3><p>Head to <a href=https://www.ssllabs.com/ssltest/ target=_blank rel="noopener noreffer">https://www.ssllabs.com/ssltest/</a> for a detailed score.</p><p>Key metrics to check:</p><ul><li>Protocol Support: TLS 1.3 ✓</li><li>OCSP Stapling: Yes ✓</li><li>Certificate Chain: 2 certificates ✓</li></ul><h3 id=52-chrome-devtools>5.2 Chrome DevTools</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Timing panel:
+</span></span><span class=line><span class=cl>  DNS Lookup:     20ms
+</span></span><span class=line><span class=cl>  Initial connection: 50ms  ← Significantly reduced
+</span></span><span class=line><span class=cl>  SSL:            30ms      ← TLS handshake
+</span></span><span class=line><span class=cl>  TTFB:           80ms
+</span></span></code></pre></td></tr></table></div></div><h3 id=53-prometheus-monitoring>5.3 Prometheus Monitoring</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=line><span class=cl><span class=c># Monitor TLS handshake time</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span>- <span class=nt>job_name</span><span class=p>:</span><span class=w> </span><span class=s1>&#39;nginx&#39;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>metrics_path</span><span class=p>:</span><span class=w> </span><span class=s1>&#39;/metrics&#39;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>static_configs</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span>- <span class=nt>targets</span><span class=p>:</span><span class=w> </span><span class=p>[</span><span class=s1>&#39;localhost:9113&#39;</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c># Alert rule</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span>- <span class=nt>alert</span><span class=p>:</span><span class=w> </span><span class=l>HighTLSHandshakeTime</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>expr</span><span class=p>:</span><span class=w> </span><span class=l>nginx_http_ssl_handshake_time_seconds_bucket{le=&#34;0.1&#34;} / nginx_http_ssl_handshake_time_seconds_count &lt; 0.9</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>for</span><span class=p>:</span><span class=w> </span><span class=l>5m</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>labels</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>severity</span><span class=p>:</span><span class=w> </span><span class=l>warning</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>annotations</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>summary</span><span class=p>:</span><span class=w> </span><span class=s2>&#34;Over 10% of TLS handshakes taking &gt; 100ms&#34;</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=6-complete-config-example>6. Complete Config Example</h2><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=k>server</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kn>listen</span> <span class=mi>443</span> <span class=s>ssl</span> <span class=s>http2</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>server_name</span> <span class=s>terra-nas.com</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1># Certificates
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kn>ssl_certificate</span> <span class=s>/etc/letsencrypt/live/terra-nas.com/fullchain.pem</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>ssl_certificate_key</span> <span class=s>/etc/letsencrypt/live/terra-nas.com/privkey.pem</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1># Protocol and cipher suites
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kn>ssl_protocols</span> <span class=s>TLSv1.2</span> <span class=s>TLSv1.3</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>ssl_ciphers</span> <span class=s>ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1># OCSP Stapling
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kn>ssl_stapling</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>ssl_stapling_verify</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>ssl_trusted_certificate</span> <span class=s>/etc/letsencrypt/live/terra-nas.com/chain.pem</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>resolver</span> <span class=n>8.8.8.8</span> <span class=n>8.8.4.4</span> <span class=s>valid=300s</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1># Session resumption
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kn>ssl_session_cache</span> <span class=s>shared:SSL:10m</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>ssl_session_timeout</span> <span class=s>1d</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>ssl_session_tickets</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1># 0-RTT (use carefully)
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kn>ssl_early_data</span> <span class=no>on</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1># Security headers
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kn>add_header</span> <span class=s>Strict-Transport-Security</span> <span class=s>&#34;max-age=31536000&#34;</span> <span class=s>always</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1># ...
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=7-summary>7. Summary</h2><table><thead><tr><th>Technique</th><th>How It Works</th><th>Impact</th></tr></thead><tbody><tr><td>TLS 1.3</td><td>1-RTT handshake</td><td>-40ms</td></tr><tr><td>OCSP Stapling</td><td>Server pre-fetches cert status</td><td>-60ms</td></tr><tr><td>Session Resumption</td><td>Reuse previous handshake</td><td>-40ms</td></tr><tr><td>Trim cert chain</td><td>Less data to transfer</td><td>-10ms</td></tr><tr><td>ECDSA certificate</td><td>Faster signing algorithm</td><td>-5ms</td></tr></tbody></table><p><strong>Key takeaway</strong>: HTTPS optimization isn&rsquo;t just about choosing algorithms — it&rsquo;s about reducing round trips (RTT). These optimizations make an even bigger difference on high-latency networks (like cross-continent connections).</p></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2022-03-17</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/211226-https/ data-title="HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms" data-hashtags=HTTPS,TLS,Performance><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/211226-https/ data-hashtag=HTTPS><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/211226-https/ data-title="HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/211226-https/ data-title="HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/211226-https/ data-title="HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/https/>HTTPS</a>,&nbsp;<a href=/tags/tls/>TLS</a>,&nbsp;<a href=/tags/performance/>Performance</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/211221-singleflight/ class=prev rel=prev title="Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code</a>
+<a href=/posts/220101-http3/ class=next rel=next title="HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis">HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

@@ -1,0 +1,456 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions - zqw's notes</title><meta name=Description content="Using FastDFS module compilation as an example to deep-dive into Nginx's modular architecture, build system, configure script internals, and production compilation optimization strategies."><meta property="og:url" content="https://uzqw.github.io/posts/211207-compile-nginx-fdfs/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions"><meta property="og:description" content="Using FastDFS module compilation as an example to deep-dive into Nginx's modular architecture, build system, configure script internals, and production compilation optimization strategies."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-12-06T21:56:00+08:00"><meta property="article:modified_time" content="2024-06-15T12:00:00+08:00"><meta property="article:tag" content="Nginx"><meta property="article:tag" content="Compilation"><meta property="article:tag" content="Modular Architecture"><meta name=twitter:card content="summary"><meta name=twitter:title content="Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions"><meta name=twitter:description content="Using FastDFS module compilation as an example to deep-dive into Nginx's modular architecture, build system, configure script internals, and production compilation optimization strategies."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/><link rel=prev href=https://uzqw.github.io/posts/211014-kafka-cluester/><link rel=next href=https://uzqw.github.io/posts/211221-singleflight/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/211207-compile-nginx-fdfs\/"},"genre":"posts","keywords":"Nginx, Compilation, Modular Architecture","wordcount":1156,"url":"https:\/\/uzqw.github.io\/posts\/211207-compile-nginx-fdfs\/","datePublished":"2021-12-06T21:56:00+08:00","dateModified":"2024-06-15T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"Using FastDFS module compilation as an example to deep-dive into Nginx's modular architecture, build system, configure script internals, and production compilation optimization strategies."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/211207-compile-nginx-fdfs/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/ selected>English</option><option value=https://uzqw.net/posts/211207-compile-nginx-fdfs/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/ selected>English</option><option value=https://uzqw.net/posts/211207-compile-nginx-fdfs/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/linux/><i class="far fa-folder fa-fw" aria-hidden=true></i>Linux</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2021-12-06>2021-12-06</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1156 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;6 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-why-compile-from-source>1. Why Compile from Source?</a><ul><li><a href=#11-package-manager-limitations>1.1 Package Manager Limitations</a></li><li><a href=#12-scenarios-requiring-source-compilation>1.2 Scenarios Requiring Source Compilation</a></li></ul></li><li><a href=#2-nginx-modular-architecture>2. Nginx Modular Architecture</a><ul><li><a href=#21-module-categories>2.1 Module Categories</a></li><li><a href=#22-module-loading-mechanism>2.2 Module Loading Mechanism</a></li></ul></li><li><a href=#3-build-environment-preparation>3. Build Environment Preparation</a><ul><li><a href=#31-install-dependencies>3.1 Install Dependencies</a></li><li><a href=#32-dependency-explanation>3.2 Dependency Explanation</a></li></ul></li><li><a href=#4-configure-script-deep-dive>4. Configure Script Deep Dive</a><ul><li><a href=#41-common-parameters>4.1 Common Parameters</a></li><li><a href=#42-what-does-configure-do>4.2 What Does Configure Do?</a></li><li><a href=#43-module-registration-internals>4.3 Module Registration Internals</a></li></ul></li><li><a href=#5-fastdfs-module-integration>5. FastDFS Module Integration</a><ul><li><a href=#51-preparation>5.1 Preparation</a></li><li><a href=#52-configure-build>5.2 Configure Build</a></li><li><a href=#53-compile-and-install>5.3 Compile and Install</a></li><li><a href=#54-configure-fastdfs-module>5.4 Configure FastDFS Module</a></li></ul></li><li><a href=#6-compilation-optimization-strategies>6. Compilation Optimization Strategies</a><ul><li><a href=#61-performance-optimization-flags>6.1 Performance Optimization Flags</a></li><li><a href=#62-security-hardening>6.2 Security Hardening</a></li><li><a href=#63-slim-binary>6.3 Slim Binary</a></li></ul></li><li><a href=#7-production-deployment>7. Production Deployment</a><ul><li><a href=#71-systemd-service-file>7.1 Systemd Service File</a></li><li><a href=#72-zero-downtime-upgrade>7.2 Zero-Downtime Upgrade</a></li></ul></li><li><a href=#8-troubleshooting>8. Troubleshooting</a><ul><li><a href=#81-compilation-error-debugging>8.1 Compilation Error Debugging</a></li><li><a href=#82-runtime-debugging>8.2 Runtime Debugging</a></li></ul></li><li><a href=#9-summary>9. Summary</a></li></ul></nav></div></div><div class=content id=content><p>Most people install Nginx via package managers, but compiling from source truly reveals its module mechanism. This post uses FastDFS module integration as an example to analyze Nginx&rsquo;s build system and modular architecture.</p><h2 id=1-why-compile-from-source>1. Why Compile from Source?</h2><h3 id=11-package-manager-limitations>1.1 Package Manager Limitations</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Package manager install</span>
+</span></span><span class=line><span class=cl>apt install nginx
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Check compile parameters</span>
+</span></span><span class=line><span class=cl>nginx -V
+</span></span><span class=line><span class=cl><span class=c1># Fixed module list, can&#39;t modify</span>
+</span></span></code></pre></td></tr></table></div></div><p>Problems:</p><ul><li>Can&rsquo;t add third-party modules (FastDFS, OpenResty)</li><li>Can&rsquo;t remove unneeded modules (reduce size)</li><li>Can&rsquo;t tune compilation optimization flags</li></ul><h3 id=12-scenarios-requiring-source-compilation>1.2 Scenarios Requiring Source Compilation</h3><table><thead><tr><th>Scenario</th><th>Requirement</th></tr></thead><tbody><tr><td>Distributed file storage</td><td>Integrate fastdfs-nginx-module</td></tr><tr><td>WAF protection</td><td>Integrate ModSecurity</td></tr><tr><td>High-performance cache</td><td>Integrate ngx_cache_purge</td></tr><tr><td>Lua scripting</td><td>Integrate OpenResty</td></tr><tr><td>Minimal footprint</td><td>Remove unneeded modules</td></tr></tbody></table><h2 id=2-nginx-modular-architecture>2. Nginx Modular Architecture</h2><h3 id=21-module-categories>2.1 Module Categories</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>┌─────────────────────────────────────────────────────────┐
+</span></span><span class=line><span class=cl>│                     Nginx Core                          │
+</span></span><span class=line><span class=cl>├─────────────────────────────────────────────────────────┤
+</span></span><span class=line><span class=cl>│  Core Modules                                            │
+</span></span><span class=line><span class=cl>│  ├── ngx_core_module    Process management, config parse │
+</span></span><span class=line><span class=cl>│  ├── ngx_errlog_module  Error logging                    │
+</span></span><span class=line><span class=cl>│  └── ngx_events_module  Event-driven                     │
+</span></span><span class=line><span class=cl>├─────────────────────────────────────────────────────────┤
+</span></span><span class=line><span class=cl>│  HTTP Modules                                            │
+</span></span><span class=line><span class=cl>│  ├── ngx_http_core_module         HTTP core              │
+</span></span><span class=line><span class=cl>│  ├── ngx_http_proxy_module        Reverse proxy          │
+</span></span><span class=line><span class=cl>│  ├── ngx_http_fastcgi_module      FastCGI support        │
+</span></span><span class=line><span class=cl>│  ├── ngx_http_gzip_module         Gzip compression       │
+</span></span><span class=line><span class=cl>│  └── ngx_http_ssl_module          HTTPS support          │
+</span></span><span class=line><span class=cl>├─────────────────────────────────────────────────────────┤
+</span></span><span class=line><span class=cl>│  Third-party Modules                                     │
+</span></span><span class=line><span class=cl>│  ├── fastdfs-nginx-module         FastDFS integration    │
+</span></span><span class=line><span class=cl>│  ├── ngx_cache_purge              Cache purging          │
+</span></span><span class=line><span class=cl>│  └── lua-nginx-module             Lua scripting          │
+</span></span><span class=line><span class=cl>└─────────────────────────────────────────────────────────┘
+</span></span></code></pre></td></tr></table></div></div><h3 id=22-module-loading-mechanism>2.2 Module Loading Mechanism</h3><p>Nginx modules can be <strong>statically compiled</strong> or <strong>dynamically loaded</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=c1># Static compilation: linked into binary at compile time
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=k>./configure</span> <span class=s>--add-module=/path/to/module</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Dynamic loading (1.9.11+): loaded at runtime
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=s>./configure</span> <span class=s>--add-dynamic-module=/path/to/module</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Load dynamic module in nginx.conf
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=s>load_module</span> <span class=s>modules/ngx_http_image_filter_module.so</span><span class=p>;</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=3-build-environment-preparation>3. Build Environment Preparation</h2><h3 id=31-install-dependencies>3.1 Install Dependencies</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Ubuntu/Debian</span>
+</span></span><span class=line><span class=cl>sudo apt update
+</span></span><span class=line><span class=cl>sudo apt install -y <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    build-essential <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    libpcre3-dev <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    zlib1g-dev <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    libssl-dev <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    libgd-dev <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    libgeoip-dev
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># CentOS/RHEL</span>
+</span></span><span class=line><span class=cl>sudo yum groupinstall -y <span class=s2>&#34;Development Tools&#34;</span>
+</span></span><span class=line><span class=cl>sudo yum install -y <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    pcre-devel <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    zlib-devel <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    openssl-devel <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    gd-devel <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    GeoIP-devel
+</span></span></code></pre></td></tr></table></div></div><h3 id=32-dependency-explanation>3.2 Dependency Explanation</h3><table><thead><tr><th>Dependency</th><th>Purpose</th><th>Corresponding Module</th></tr></thead><tbody><tr><td>PCRE</td><td>Regular expressions</td><td>rewrite module</td></tr><tr><td>zlib</td><td>Gzip compression</td><td>gzip module</td></tr><tr><td>OpenSSL</td><td>HTTPS</td><td>ssl module</td></tr><tr><td>libgd</td><td>Image processing</td><td>image_filter module</td></tr><tr><td>GeoIP</td><td>IP geolocation</td><td>geoip module</td></tr></tbody></table><h2 id=4-configure-script-deep-dive>4. Configure Script Deep Dive</h2><h3 id=41-common-parameters>4.1 Common Parameters</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>./configure <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    <span class=c1># Install paths</span>
+</span></span><span class=line><span class=cl>    --prefix<span class=o>=</span>/usr/local/nginx <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --sbin-path<span class=o>=</span>/usr/local/nginx/sbin/nginx <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --conf-path<span class=o>=</span>/etc/nginx/nginx.conf <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --pid-path<span class=o>=</span>/var/run/nginx.pid <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --error-log-path<span class=o>=</span>/var/log/nginx/error.log <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --http-log-path<span class=o>=</span>/var/log/nginx/access.log <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    
+</span></span><span class=line><span class=cl>    <span class=c1># User and group</span>
+</span></span><span class=line><span class=cl>    --user<span class=o>=</span>nginx <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --group<span class=o>=</span>nginx <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    
+</span></span><span class=line><span class=cl>    <span class=c1># Enable modules</span>
+</span></span><span class=line><span class=cl>    --with-http_ssl_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --with-http_v2_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --with-http_realip_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --with-http_gzip_static_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --with-http_stub_status_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    
+</span></span><span class=line><span class=cl>    <span class=c1># Disable unneeded modules (reduce size)</span>
+</span></span><span class=line><span class=cl>    --without-http_autoindex_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --without-http_ssi_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    
+</span></span><span class=line><span class=cl>    <span class=c1># Third-party modules</span>
+</span></span><span class=line><span class=cl>    --add-module<span class=o>=</span>/path/to/fastdfs-nginx-module/src <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    
+</span></span><span class=line><span class=cl>    <span class=c1># Compilation optimization</span>
+</span></span><span class=line><span class=cl>    --with-cc-opt<span class=o>=</span><span class=s1>&#39;-O2 -fstack-protector-strong&#39;</span> <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --with-ld-opt<span class=o>=</span><span class=s1>&#39;-Wl,-z,relro -Wl,-z,now&#39;</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=42-what-does-configure-do>4.2 What Does Configure Do?</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># View configure output</span>
+</span></span><span class=line><span class=cl>ls objs/
+</span></span><span class=line><span class=cl><span class=c1># autoconf.err  Makefile  ngx_auto_config.h  ngx_modules.c  src/</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Key files</strong>:</p><table><thead><tr><th>File</th><th>Purpose</th></tr></thead><tbody><tr><td><code>objs/Makefile</code></td><td>Build rules</td></tr><tr><td><code>objs/ngx_auto_config.h</code></td><td>Auto-detected system config</td></tr><tr><td><code>objs/ngx_modules.c</code></td><td>Module registration list</td></tr></tbody></table><h3 id=43-module-registration-internals>4.3 Module Registration Internals</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// objs/ngx_modules.c (auto-generated)
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>ngx_module_t</span> <span class=o>*</span><span class=n>ngx_modules</span><span class=p>[]</span> <span class=o>=</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=o>&amp;</span><span class=n>ngx_core_module</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=o>&amp;</span><span class=n>ngx_errlog_module</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=o>&amp;</span><span class=n>ngx_conf_module</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=o>&amp;</span><span class=n>ngx_events_module</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=o>&amp;</span><span class=n>ngx_http_module</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=o>&amp;</span><span class=n>ngx_http_core_module</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// ... more modules
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=o>&amp;</span><span class=n>ngx_http_fastdfs_module</span><span class=p>,</span>  <span class=c1>// Third-party module
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=nb>NULL</span>
+</span></span><span class=line><span class=cl><span class=p>};</span>
+</span></span></code></pre></td></tr></table></div></div><p>This is why adding modules requires recompilation — the module list is determined at compile time.</p><h2 id=5-fastdfs-module-integration>5. FastDFS Module Integration</h2><h3 id=51-preparation>5.1 Preparation</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Download source</span>
+</span></span><span class=line><span class=cl>wget https://nginx.org/download/nginx-1.24.0.tar.gz
+</span></span><span class=line><span class=cl>git clone https://github.com/happyfish100/fastdfs-nginx-module.git
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Extract</span>
+</span></span><span class=line><span class=cl>tar -xzf nginx-1.24.0.tar.gz
+</span></span><span class=line><span class=cl><span class=nb>cd</span> nginx-1.24.0
+</span></span></code></pre></td></tr></table></div></div><h3 id=52-configure-build>5.2 Configure Build</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>./configure <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --prefix<span class=o>=</span>/usr/local/nginx <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --with-http_ssl_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --with-http_v2_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --with-http_realip_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --with-http_stub_status_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --add-module<span class=o>=</span>../fastdfs-nginx-module/src
+</span></span></code></pre></td></tr></table></div></div><h3 id=53-compile-and-install>5.3 Compile and Install</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Compile (use all CPU cores)</span>
+</span></span><span class=line><span class=cl>make -j<span class=k>$(</span>nproc<span class=k>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Install</span>
+</span></span><span class=line><span class=cl>sudo make install
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Verify</span>
+</span></span><span class=line><span class=cl>/usr/local/nginx/sbin/nginx -V
+</span></span><span class=line><span class=cl><span class=c1># Output should include --add-module=.../fastdfs-nginx-module</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=54-configure-fastdfs-module>5.4 Configure FastDFS Module</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=c1># /etc/nginx/nginx.conf
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=k>http</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kn>server</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=kn>listen</span> <span class=mi>80</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        
+</span></span><span class=line><span class=cl>        <span class=c1># FastDFS file access
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=kn>location</span> <span class=s>/group1/M00</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=kn>ngx_fastdfs_module</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=6-compilation-optimization-strategies>6. Compilation Optimization Strategies</h2><h3 id=61-performance-optimization-flags>6.1 Performance Optimization Flags</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>./configure <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    <span class=c1># Compiler optimization</span>
+</span></span><span class=line><span class=cl>    --with-cc-opt<span class=o>=</span><span class=s1>&#39;-O3 -march=native -mtune=native&#39;</span> <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    
+</span></span><span class=line><span class=cl>    <span class=c1># Linker optimization</span>
+</span></span><span class=line><span class=cl>    --with-ld-opt<span class=o>=</span><span class=s1>&#39;-Wl,-O1 -Wl,--as-needed&#39;</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Optimization level explanation</strong>:</p><table><thead><tr><th>Flag</th><th>Effect</th><th>Use Case</th></tr></thead><tbody><tr><td><code>-O0</code></td><td>No optimization</td><td>Debugging</td></tr><tr><td><code>-O2</code></td><td>Balanced optimization</td><td>Production (recommended)</td></tr><tr><td><code>-O3</code></td><td>Aggressive optimization</td><td>Maximum performance</td></tr><tr><td><code>-march=native</code></td><td>Target current CPU</td><td>Non-container environments</td></tr></tbody></table><h3 id=62-security-hardening>6.2 Security Hardening</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>./configure <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    <span class=c1># Stack protection</span>
+</span></span><span class=line><span class=cl>    --with-cc-opt<span class=o>=</span><span class=s1>&#39;-fstack-protector-strong -D_FORTIFY_SOURCE=2&#39;</span> <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    
+</span></span><span class=line><span class=cl>    <span class=c1># RELRO (lazy binding protection)</span>
+</span></span><span class=line><span class=cl>    --with-ld-opt<span class=o>=</span><span class=s1>&#39;-Wl,-z,relro -Wl,-z,now&#39;</span> <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    
+</span></span><span class=line><span class=cl>    <span class=c1># PIE (address space randomization)</span>
+</span></span><span class=line><span class=cl>    --with-cc-opt<span class=o>=</span><span class=s1>&#39;-fPIE&#39;</span> <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --with-ld-opt<span class=o>=</span><span class=s1>&#39;-pie&#39;</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=63-slim-binary>6.3 Slim Binary</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Remove unneeded modules</span>
+</span></span><span class=line><span class=cl>./configure <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --without-http_autoindex_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --without-http_browser_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --without-http_empty_gif_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --without-http_geo_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --without-http_map_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --without-http_split_clients_module <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    --without-http_userid_module
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Strip symbol table after compile</span>
+</span></span><span class=line><span class=cl>strip /usr/local/nginx/sbin/nginx
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Compare size</span>
+</span></span><span class=line><span class=cl>ls -lh /usr/local/nginx/sbin/nginx
+</span></span><span class=line><span class=cl><span class=c1># From ~5MB to ~1.5MB</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=7-production-deployment>7. Production Deployment</h2><h3 id=71-systemd-service-file>7.1 Systemd Service File</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-ini data-lang=ini><span class=line><span class=cl><span class=c1># /etc/systemd/system/nginx.service</span>
+</span></span><span class=line><span class=cl><span class=k>[Unit]</span>
+</span></span><span class=line><span class=cl><span class=na>Description</span><span class=o>=</span><span class=s>Nginx HTTP Server</span>
+</span></span><span class=line><span class=cl><span class=na>After</span><span class=o>=</span><span class=s>network.target</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>[Service]</span>
+</span></span><span class=line><span class=cl><span class=na>Type</span><span class=o>=</span><span class=s>forking</span>
+</span></span><span class=line><span class=cl><span class=na>PIDFile</span><span class=o>=</span><span class=s>/var/run/nginx.pid</span>
+</span></span><span class=line><span class=cl><span class=na>ExecStartPre</span><span class=o>=</span><span class=s>/usr/local/nginx/sbin/nginx -t</span>
+</span></span><span class=line><span class=cl><span class=na>ExecStart</span><span class=o>=</span><span class=s>/usr/local/nginx/sbin/nginx</span>
+</span></span><span class=line><span class=cl><span class=na>ExecReload</span><span class=o>=</span><span class=s>/bin/kill -s HUP $MAINPID</span>
+</span></span><span class=line><span class=cl><span class=na>ExecStop</span><span class=o>=</span><span class=s>/bin/kill -s QUIT $MAINPID</span>
+</span></span><span class=line><span class=cl><span class=na>PrivateTmp</span><span class=o>=</span><span class=s>true</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>[Install]</span>
+</span></span><span class=line><span class=cl><span class=na>WantedBy</span><span class=o>=</span><span class=s>multi-user.target</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=72-zero-downtime-upgrade>7.2 Zero-Downtime Upgrade</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># 1. Compile new version (don&#39;t install)</span>
+</span></span><span class=line><span class=cl>./configure ... <span class=o>&amp;&amp;</span> make
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 2. Backup old binary</span>
+</span></span><span class=line><span class=cl>cp /usr/local/nginx/sbin/nginx /usr/local/nginx/sbin/nginx.old
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 3. Replace binary</span>
+</span></span><span class=line><span class=cl>cp objs/nginx /usr/local/nginx/sbin/nginx
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 4. Send USR2 to old process, start new process</span>
+</span></span><span class=line><span class=cl><span class=nb>kill</span> -USR2 <span class=k>$(</span>cat /var/run/nginx.pid<span class=k>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 5. Gracefully shut down old workers</span>
+</span></span><span class=line><span class=cl><span class=nb>kill</span> -WINCH <span class=k>$(</span>cat /var/run/nginx.pid.oldbin<span class=k>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 6. After confirming success, stop old master</span>
+</span></span><span class=line><span class=cl><span class=nb>kill</span> -QUIT <span class=k>$(</span>cat /var/run/nginx.pid.oldbin<span class=k>)</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=8-troubleshooting>8. Troubleshooting</h2><h3 id=81-compilation-error-debugging>8.1 Compilation Error Debugging</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># View detailed errors</span>
+</span></span><span class=line><span class=cl>cat objs/autoconf.err
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Common issues</span>
+</span></span><span class=line><span class=cl><span class=c1># 1. Missing PCRE</span>
+</span></span><span class=line><span class=cl>./configure: error: the HTTP rewrite module requires the PCRE library
+</span></span><span class=line><span class=cl><span class=c1># Solution: apt install libpcre3-dev</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 2. Missing OpenSSL</span>
+</span></span><span class=line><span class=cl>./configure: error: SSL modules require the OpenSSL library
+</span></span><span class=line><span class=cl><span class=c1># Solution: apt install libssl-dev</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 3. Third-party module path wrong</span>
+</span></span><span class=line><span class=cl>./configure: error: no /path/to/module/config was found
+</span></span><span class=line><span class=cl><span class=c1># Solution: Check if config file exists in module directory</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=82-runtime-debugging>8.2 Runtime Debugging</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Test configuration</span>
+</span></span><span class=line><span class=cl>nginx -t
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># View loaded modules</span>
+</span></span><span class=line><span class=cl>nginx -V 2&gt;<span class=p>&amp;</span><span class=m>1</span> <span class=p>|</span> tr <span class=s1>&#39; &#39;</span> <span class=s1>&#39;\n&#39;</span> <span class=p>|</span> grep module
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Start in debug mode</span>
+</span></span><span class=line><span class=cl>nginx -g <span class=s2>&#34;daemon off; error_log /dev/stderr debug;&#34;</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=9-summary>9. Summary</h2><table><thead><tr><th>Topic</th><th>Takeaway</th></tr></thead><tbody><tr><td>Module mechanism</td><td>Static compile vs dynamic load</td></tr><tr><td>Configure</td><td>Auto-detect + generate Makefile</td></tr><tr><td>Compile optimization</td><td><code>-O2</code> + security hardening flags</td></tr><tr><td>Zero-downtime upgrade</td><td>USR2 + WINCH signals</td></tr></tbody></table><p><strong>Core insight</strong>: Understanding Nginx&rsquo;s build system not only enables flexible customization, but also deepens understanding of C project build processes — applicable to other system software like Redis and Linux Kernel.</p></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2024-06-15</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/ data-title="Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions" data-hashtags="Nginx,Compilation,Modular Architecture"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/ data-hashtag=Nginx><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/ data-title="Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/ data-title="Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/ data-title="Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/nginx/>Nginx</a>,&nbsp;<a href=/tags/compilation/>Compilation</a>,&nbsp;<a href=/tags/modular-architecture/>Modular Architecture</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/211014-kafka-cluester/ class=prev rel=prev title="Postmortem: Debugging a Zookeeper Split-Brain in Production"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Postmortem: Debugging a Zookeeper Split-Brain in Production</a>
+<a href=/posts/211221-singleflight/ class=next rel=next title="Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code">Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

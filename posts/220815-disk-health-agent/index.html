@@ -1,0 +1,656 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>NAS Disk Health Monitoring: From smartctl to Custom Agent - zqw's notes</title><meta name=Description content="Implementing disk health monitoring for NAS products: understanding SMART attributes, parsing smartctl output with Go, designing alert strategies to protect user data."><meta property="og:url" content="https://uzqw.github.io/posts/220815-disk-health-agent/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="NAS Disk Health Monitoring: From smartctl to Custom Agent"><meta property="og:description" content="Implementing disk health monitoring for NAS products: understanding SMART attributes, parsing smartctl output with Go, designing alert strategies to protect user data."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2022-08-15T10:00:00+08:00"><meta property="article:modified_time" content="2022-08-15T10:00:00+08:00"><meta property="article:tag" content="Go"><meta property="article:tag" content="Monitoring"><meta property="article:tag" content="SMART"><meta name=twitter:card content="summary"><meta name=twitter:title content="NAS Disk Health Monitoring: From smartctl to Custom Agent"><meta name=twitter:description content="Implementing disk health monitoring for NAS products: understanding SMART attributes, parsing smartctl output with Go, designing alert strategies to protect user data."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/220815-disk-health-agent/><link rel=prev href=https://uzqw.github.io/posts/220414-atoi/><link rel=next href=https://uzqw.github.io/posts/230310-go-daemon-dev/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"NAS Disk Health Monitoring: From smartctl to Custom Agent","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/220815-disk-health-agent\/"},"genre":"posts","keywords":"Go, Monitoring, SMART","wordcount":1546,"url":"https:\/\/uzqw.github.io\/posts\/220815-disk-health-agent\/","datePublished":"2022-08-15T10:00:00+08:00","dateModified":"2022-08-15T10:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"Implementing disk health monitoring for NAS products: understanding SMART attributes, parsing smartctl output with Go, designing alert strategies to protect user data."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/220815-disk-health-agent/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/220815-disk-health-agent/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/220815-disk-health-agent/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/220815-disk-health-agent/ selected>English</option><option value=https://uzqw.net/posts/220815-disk-health-agent/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/220815-disk-health-agent/ selected>English</option><option value=https://uzqw.net/posts/220815-disk-health-agent/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">NAS Disk Health Monitoring: From smartctl to Custom Agent</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/linux/><i class="far fa-folder fa-fw" aria-hidden=true></i>Linux</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2022-08-15>2022-08-15</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1546 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;8 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-smart-technology-overview>1. SMART Technology Overview</a><ul><li><a href=#11-what-is-smart>1.1 What is SMART?</a></li><li><a href=#12-key-metrics>1.2 Key Metrics</a></li><li><a href=#13-typical-drive-lifespan-patterns>1.3 Typical Drive Lifespan Patterns</a></li></ul></li><li><a href=#2-using-smartctl>2. Using smartctl</a><ul><li><a href=#21-basic-commands>2.1 Basic Commands</a></li><li><a href=#22-output-example>2.2 Output Example</a></li></ul></li><li><a href=#3-go-implementation>3. Go Implementation</a><ul><li><a href=#31-data-structure-definitions>3.1 Data Structure Definitions</a></li><li><a href=#32-execute-smartctl-and-parse>3.2 Execute smartctl and Parse</a></li><li><a href=#33-alert-strategy>3.3 Alert Strategy</a></li><li><a href=#34-scheduled-checks>3.4 Scheduled Checks</a></li></ul></li><li><a href=#4-alert-notifications>4. Alert Notifications</a><ul><li><a href=#41-email-integration>4.1 Email Integration</a></li><li><a href=#42-prometheus-metrics>4.2 Prometheus Metrics</a></li></ul></li><li><a href=#5-production-considerations>5. Production Considerations</a><ul><li><a href=#51-avoid-frequent-queries>5.1 Avoid Frequent Queries</a></li><li><a href=#52-handling-ssds>5.2 Handling SSDs</a></li><li><a href=#53-raid-scenarios>5.3 RAID Scenarios</a></li></ul></li><li><a href=#6-summary>6. Summary</a></li></ul></nav></div></div><div class=content id=content><p>A NAS&rsquo;s most important job is protecting user data. Disk failures often have warning signs, and SMART technology can detect problems early. This post documents how to build a disk health monitoring agent.</p><h2 id=1-smart-technology-overview>1. SMART Technology Overview</h2><h3 id=11-what-is-smart>1.1 What is SMART?</h3><p><strong>S.M.A.R.T.</strong> (Self-Monitoring, Analysis and Reporting Technology) is built-in self-testing in hard drives. Drives continuously collect health metrics that the OS can read.</p><h3 id=12-key-metrics>1.2 Key Metrics</h3><table><thead><tr><th>ID</th><th>Attribute</th><th>Meaning</th><th>Danger Threshold</th></tr></thead><tbody><tr><td>5</td><td>Reallocated Sectors Count</td><td>Remapped bad sectors</td><td>>0 needs attention</td></tr><tr><td>187</td><td>Reported Uncorrectable Errors</td><td>Errors that couldn&rsquo;t be corrected</td><td>>0 dangerous</td></tr><tr><td>188</td><td>Command Timeout</td><td>Command timeout count</td><td>Rapid increase = danger</td></tr><tr><td>197</td><td>Current Pending Sector Count</td><td>Sectors waiting to be remapped</td><td>>0 = potential failure</td></tr><tr><td>198</td><td>Offline Uncorrectable</td><td>Offline uncorrectable errors</td><td>>0 = imminent failure</td></tr><tr><td>194</td><td>Temperature</td><td>Temperature</td><td>>55°C alert</td></tr></tbody></table><h3 id=13-typical-drive-lifespan-patterns>1.3 Typical Drive Lifespan Patterns</h3><p>According to Backblaze statistics:</p><ul><li><strong>Year 1</strong>: ~5% annual failure rate (&ldquo;infant mortality&rdquo;)</li><li><strong>Years 2-3</strong>: ~1.5% annual failure rate (most stable)</li><li><strong>Year 4+</strong>: Failure rate increases rapidly</li><li>After <strong>Reallocated Sectors > 0</strong>, failure probability spikes within 1 year</li></ul><h2 id=2-using-smartctl>2. Using smartctl</h2><h3 id=21-basic-commands>2.1 Basic Commands</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># View all SMART info</span>
+</span></span><span class=line><span class=cl>smartctl -a /dev/sda
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Health status only</span>
+</span></span><span class=line><span class=cl>smartctl -H /dev/sda
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># JSON output (easier to parse)</span>
+</span></span><span class=line><span class=cl>smartctl -a /dev/sda -j
+</span></span></code></pre></td></tr></table></div></div><h3 id=22-output-example>2.2 Output Example</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-json data-lang=json><span class=line><span class=cl><span class=p>{</span>
+</span></span><span class=line><span class=cl>  <span class=nt>&#34;device&#34;</span><span class=p>:</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nt>&#34;name&#34;</span><span class=p>:</span> <span class=s2>&#34;/dev/sda&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=nt>&#34;type&#34;</span><span class=p>:</span> <span class=s2>&#34;sat&#34;</span>
+</span></span><span class=line><span class=cl>  <span class=p>},</span>
+</span></span><span class=line><span class=cl>  <span class=nt>&#34;model_name&#34;</span><span class=p>:</span> <span class=s2>&#34;WDC WD40EFRX-68N32N0&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>  <span class=nt>&#34;serial_number&#34;</span><span class=p>:</span> <span class=s2>&#34;WD-WCC7K1234567&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>  <span class=nt>&#34;ata_smart_attributes&#34;</span><span class=p>:</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nt>&#34;table&#34;</span><span class=p>:</span> <span class=p>[</span>
+</span></span><span class=line><span class=cl>      <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=nt>&#34;id&#34;</span><span class=p>:</span> <span class=mi>5</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nt>&#34;name&#34;</span><span class=p>:</span> <span class=s2>&#34;Reallocated_Sector_Ct&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nt>&#34;value&#34;</span><span class=p>:</span> <span class=mi>200</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nt>&#34;worst&#34;</span><span class=p>:</span> <span class=mi>200</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nt>&#34;thresh&#34;</span><span class=p>:</span> <span class=mi>140</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nt>&#34;raw&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nt>&#34;value&#34;</span><span class=p>:</span> <span class=mi>0</span><span class=p>}</span>
+</span></span><span class=line><span class=cl>      <span class=p>},</span>
+</span></span><span class=line><span class=cl>      <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=nt>&#34;id&#34;</span><span class=p>:</span> <span class=mi>194</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nt>&#34;name&#34;</span><span class=p>:</span> <span class=s2>&#34;Temperature_Celsius&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nt>&#34;value&#34;</span><span class=p>:</span> <span class=mi>117</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nt>&#34;raw&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nt>&#34;value&#34;</span><span class=p>:</span> <span class=mi>33</span><span class=p>}</span>
+</span></span><span class=line><span class=cl>      <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>]</span>
+</span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=3-go-implementation>3. Go Implementation</h2><h3 id=31-data-structure-definitions>3.1 Data Structure Definitions</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kn>package</span><span class=w> </span><span class=nx>diskmon</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// SmartctlOutput maps to smartctl -j output</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>SmartctlOutput</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Device</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Name</span><span class=w> </span><span class=kt>string</span><span class=w> </span><span class=s>`json:&#34;name&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Type</span><span class=w> </span><span class=kt>string</span><span class=w> </span><span class=s>`json:&#34;type&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=s>`json:&#34;device&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ModelName</span><span class=w>    </span><span class=kt>string</span><span class=w> </span><span class=s>`json:&#34;model_name&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>SerialNumber</span><span class=w> </span><span class=kt>string</span><span class=w> </span><span class=s>`json:&#34;serial_number&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>SmartStatus</span><span class=w>  </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Passed</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=s>`json:&#34;passed&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=s>`json:&#34;smart_status&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ATASmartAttributes</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Table</span><span class=w> </span><span class=p>[]</span><span class=nx>SmartAttribute</span><span class=w> </span><span class=s>`json:&#34;table&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=s>`json:&#34;ata_smart_attributes&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Temperature</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Current</span><span class=w> </span><span class=kt>int</span><span class=w> </span><span class=s>`json:&#34;current&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=s>`json:&#34;temperature&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PowerOnTime</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Hours</span><span class=w> </span><span class=kt>int</span><span class=w> </span><span class=s>`json:&#34;hours&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=s>`json:&#34;power_on_time&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>SmartAttribute</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ID</span><span class=w>     </span><span class=kt>int</span><span class=w>    </span><span class=s>`json:&#34;id&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Name</span><span class=w>   </span><span class=kt>string</span><span class=w> </span><span class=s>`json:&#34;name&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Value</span><span class=w>  </span><span class=kt>int</span><span class=w>    </span><span class=s>`json:&#34;value&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Worst</span><span class=w>  </span><span class=kt>int</span><span class=w>    </span><span class=s>`json:&#34;worst&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Thresh</span><span class=w> </span><span class=kt>int</span><span class=w>    </span><span class=s>`json:&#34;thresh&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Raw</span><span class=w>    </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Value</span><span class=w> </span><span class=kt>int</span><span class=w> </span><span class=s>`json:&#34;value&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=s>`json:&#34;raw&#34;`</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// DiskHealth is the simplified health status</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>DiskHealth</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Device</span><span class=w>             </span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Model</span><span class=w>              </span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Serial</span><span class=w>             </span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Passed</span><span class=w>             </span><span class=kt>bool</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Temperature</span><span class=w>        </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PowerOnHours</span><span class=w>       </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ReallocatedSectors</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PendingSectors</span><span class=w>     </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>UncorrectableErrors</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Alerts</span><span class=w>             </span><span class=p>[]</span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=32-execute-smartctl-and-parse>3.2 Execute smartctl and Parse</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>GetDiskHealth</span><span class=p>(</span><span class=nx>device</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=o>*</span><span class=nx>DiskHealth</span><span class=p>,</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>cancel</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nf>WithTimeout</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>(),</span><span class=w> </span><span class=mi>30</span><span class=o>*</span><span class=nx>time</span><span class=p>.</span><span class=nx>Second</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nf>cancel</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>cmd</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>exec</span><span class=p>.</span><span class=nf>CommandContext</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=s>&#34;smartctl&#34;</span><span class=p>,</span><span class=w> </span><span class=s>&#34;-a&#34;</span><span class=p>,</span><span class=w> </span><span class=s>&#34;-j&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>device</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>output</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>cmd</span><span class=p>.</span><span class=nf>Output</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// smartctl returning non-0 might just be a warning</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>exitErr</span><span class=p>,</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>err</span><span class=p>.(</span><span class=o>*</span><span class=nx>exec</span><span class=p>.</span><span class=nx>ExitError</span><span class=p>);</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=c1>// Return code 32 = past errors, 64 = current errors</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>if</span><span class=w> </span><span class=nx>exitErr</span><span class=p>.</span><span class=nf>ExitCode</span><span class=p>()</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=mi>4</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;smartctl failed: %w&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=c1>// Continue parsing output</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>raw</span><span class=w> </span><span class=nx>SmartctlOutput</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>json</span><span class=p>.</span><span class=nf>Unmarshal</span><span class=p>(</span><span class=nx>output</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>raw</span><span class=p>);</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;parse smartctl output: %w&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nf>analyzeHealth</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>raw</span><span class=p>),</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>analyzeHealth</span><span class=p>(</span><span class=nx>raw</span><span class=w> </span><span class=o>*</span><span class=nx>SmartctlOutput</span><span class=p>)</span><span class=w> </span><span class=o>*</span><span class=nx>DiskHealth</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>health</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=o>&amp;</span><span class=nx>DiskHealth</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Device</span><span class=p>:</span><span class=w>       </span><span class=nx>raw</span><span class=p>.</span><span class=nx>Device</span><span class=p>.</span><span class=nx>Name</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Model</span><span class=p>:</span><span class=w>        </span><span class=nx>raw</span><span class=p>.</span><span class=nx>ModelName</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Serial</span><span class=p>:</span><span class=w>       </span><span class=nx>raw</span><span class=p>.</span><span class=nx>SerialNumber</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Passed</span><span class=p>:</span><span class=w>       </span><span class=nx>raw</span><span class=p>.</span><span class=nx>SmartStatus</span><span class=p>.</span><span class=nx>Passed</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Temperature</span><span class=p>:</span><span class=w>  </span><span class=nx>raw</span><span class=p>.</span><span class=nx>Temperature</span><span class=p>.</span><span class=nx>Current</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>PowerOnHours</span><span class=p>:</span><span class=w> </span><span class=nx>raw</span><span class=p>.</span><span class=nx>PowerOnTime</span><span class=p>.</span><span class=nx>Hours</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Extract key attributes</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>attr</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>raw</span><span class=p>.</span><span class=nx>ATASmartAttributes</span><span class=p>.</span><span class=nx>Table</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>switch</span><span class=w> </span><span class=nx>attr</span><span class=p>.</span><span class=nx>ID</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>case</span><span class=w> </span><span class=mi>5</span><span class=p>:</span><span class=w> </span><span class=c1>// Reallocated Sectors</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>health</span><span class=p>.</span><span class=nx>ReallocatedSectors</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>attr</span><span class=p>.</span><span class=nx>Raw</span><span class=p>.</span><span class=nx>Value</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>case</span><span class=w> </span><span class=mi>197</span><span class=p>:</span><span class=w> </span><span class=c1>// Current Pending Sector</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>health</span><span class=p>.</span><span class=nx>PendingSectors</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>attr</span><span class=p>.</span><span class=nx>Raw</span><span class=p>.</span><span class=nx>Value</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>case</span><span class=w> </span><span class=mi>187</span><span class=p>,</span><span class=w> </span><span class=mi>198</span><span class=p>:</span><span class=w> </span><span class=c1>// Uncorrectable Errors</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>health</span><span class=p>.</span><span class=nx>UncorrectableErrors</span><span class=w> </span><span class=o>+=</span><span class=w> </span><span class=nx>attr</span><span class=p>.</span><span class=nx>Raw</span><span class=p>.</span><span class=nx>Value</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Generate alerts</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>health</span><span class=p>.</span><span class=nx>Alerts</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nf>generateAlerts</span><span class=p>(</span><span class=nx>health</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>health</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=33-alert-strategy>3.3 Alert Strategy</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>AlertLevel</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>const</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>AlertNone</span><span class=w> </span><span class=nx>AlertLevel</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=kc>iota</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>AlertWarning</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>AlertCritical</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>generateAlerts</span><span class=p>(</span><span class=nx>h</span><span class=w> </span><span class=o>*</span><span class=nx>DiskHealth</span><span class=p>)</span><span class=w> </span><span class=p>[]</span><span class=kt>string</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>alerts</span><span class=w> </span><span class=p>[]</span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// SMART self-test failed = replace immediately</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=p>!</span><span class=nx>h</span><span class=p>.</span><span class=nx>Passed</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>alerts</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>alerts</span><span class=p>,</span><span class=w> </span><span class=s>&#34;[CRITICAL] SMART self-test failed! Backup data and replace drive immediately&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Reallocated sectors</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>ReallocatedSectors</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>ReallocatedSectors</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>10</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>alerts</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>alerts</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;[WARNING] Found %d reallocated sectors, monitor closely&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>ReallocatedSectors</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>alerts</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>alerts</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;[CRITICAL] Too many reallocated sectors (%d), replace soon&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>ReallocatedSectors</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Pending sectors (more dangerous)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>PendingSectors</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>alerts</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>alerts</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;[CRITICAL] %d pending sectors, data may be at risk&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>PendingSectors</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Uncorrectable errors</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>UncorrectableErrors</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>alerts</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>alerts</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;[CRITICAL] Detected %d uncorrectable errors&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>UncorrectableErrors</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Temperature</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>Temperature</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=mi>55</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>alerts</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>alerts</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;[WARNING] Disk temperature too high: %d°C, check cooling&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>Temperature</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Power-on time</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>h</span><span class=p>.</span><span class=nx>PowerOnHours</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=mi>35000</span><span class=w> </span><span class=p>{</span><span class=w> </span><span class=c1>// About 4 years</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>alerts</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>alerts</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;[INFO] Drive has been running %d hours (%.1f years), consider replacement&#34;</span><span class=p>,</span><span class=w> 
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>h</span><span class=p>.</span><span class=nx>PowerOnHours</span><span class=p>,</span><span class=w> </span><span class=nb>float64</span><span class=p>(</span><span class=nx>h</span><span class=p>.</span><span class=nx>PowerOnHours</span><span class=p>)</span><span class=o>/</span><span class=mi>8760</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>alerts</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=34-scheduled-checks>3.4 Scheduled Checks</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>DiskMonitor</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>devices</span><span class=w>   </span><span class=p>[]</span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>interval</span><span class=w>  </span><span class=nx>time</span><span class=p>.</span><span class=nx>Duration</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>alertChan</span><span class=w> </span><span class=kd>chan</span><span class=w> </span><span class=nx>Alert</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ctx</span><span class=w>       </span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>cancel</span><span class=w>    </span><span class=nx>context</span><span class=p>.</span><span class=nx>CancelFunc</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>NewDiskMonitor</span><span class=p>(</span><span class=nx>devices</span><span class=w> </span><span class=p>[]</span><span class=kt>string</span><span class=p>,</span><span class=w> </span><span class=nx>interval</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nx>Duration</span><span class=p>)</span><span class=w> </span><span class=o>*</span><span class=nx>DiskMonitor</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>cancel</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nf>WithCancel</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>())</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=o>&amp;</span><span class=nx>DiskMonitor</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>devices</span><span class=p>:</span><span class=w>   </span><span class=nx>devices</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>interval</span><span class=p>:</span><span class=w>  </span><span class=nx>interval</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>alertChan</span><span class=p>:</span><span class=w> </span><span class=nb>make</span><span class=p>(</span><span class=kd>chan</span><span class=w> </span><span class=nx>Alert</span><span class=p>,</span><span class=w> </span><span class=mi>100</span><span class=p>),</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>ctx</span><span class=p>:</span><span class=w>       </span><span class=nx>ctx</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>cancel</span><span class=p>:</span><span class=w>    </span><span class=nx>cancel</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>m</span><span class=w> </span><span class=o>*</span><span class=nx>DiskMonitor</span><span class=p>)</span><span class=w> </span><span class=nf>Run</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ticker</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nf>NewTicker</span><span class=p>(</span><span class=nx>m</span><span class=p>.</span><span class=nx>interval</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nx>ticker</span><span class=p>.</span><span class=nf>Stop</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Check immediately on startup</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>m</span><span class=p>.</span><span class=nf>checkAllDisks</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>select</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>case</span><span class=w> </span><span class=o>&lt;-</span><span class=nx>m</span><span class=p>.</span><span class=nx>ctx</span><span class=p>.</span><span class=nf>Done</span><span class=p>():</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>case</span><span class=w> </span><span class=o>&lt;-</span><span class=nx>ticker</span><span class=p>.</span><span class=nx>C</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>m</span><span class=p>.</span><span class=nf>checkAllDisks</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>m</span><span class=w> </span><span class=o>*</span><span class=nx>DiskMonitor</span><span class=p>)</span><span class=w> </span><span class=nf>checkAllDisks</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>device</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>m</span><span class=p>.</span><span class=nx>devices</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>health</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>GetDiskHealth</span><span class=p>(</span><span class=nx>device</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>log</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;Failed to check %s: %v&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>device</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>continue</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Record to Prometheus</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>diskTemperature</span><span class=p>.</span><span class=nf>WithLabelValues</span><span class=p>(</span><span class=nx>device</span><span class=p>).</span><span class=nf>Set</span><span class=p>(</span><span class=nb>float64</span><span class=p>(</span><span class=nx>health</span><span class=p>.</span><span class=nx>Temperature</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>diskReallocatedSectors</span><span class=p>.</span><span class=nf>WithLabelValues</span><span class=p>(</span><span class=nx>device</span><span class=p>).</span><span class=nf>Set</span><span class=p>(</span><span class=nb>float64</span><span class=p>(</span><span class=nx>health</span><span class=p>.</span><span class=nx>ReallocatedSectors</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Send alerts</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>msg</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>health</span><span class=p>.</span><span class=nx>Alerts</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>m</span><span class=p>.</span><span class=nx>alertChan</span><span class=w> </span><span class=o>&lt;-</span><span class=w> </span><span class=nx>Alert</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>Device</span><span class=p>:</span><span class=w>  </span><span class=nx>device</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>Message</span><span class=p>:</span><span class=w> </span><span class=nx>msg</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>Time</span><span class=p>:</span><span class=w>    </span><span class=nx>time</span><span class=p>.</span><span class=nf>Now</span><span class=p>(),</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=4-alert-notifications>4. Alert Notifications</h2><h3 id=41-email-integration>4.1 Email Integration</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>m</span><span class=w> </span><span class=o>*</span><span class=nx>DiskMonitor</span><span class=p>)</span><span class=w> </span><span class=nf>consumeAlerts</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>alert</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>m</span><span class=p>.</span><span class=nx>alertChan</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Prevent alert storms: same disk + same message, only send once per hour</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>m</span><span class=p>.</span><span class=nf>isRecentlySent</span><span class=p>(</span><span class=nx>alert</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>continue</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>m</span><span class=p>.</span><span class=nf>sendEmail</span><span class=p>(</span><span class=nx>alert</span><span class=p>);</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>log</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;Failed to send email: %v&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>m</span><span class=p>.</span><span class=nf>recordSent</span><span class=p>(</span><span class=nx>alert</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>m</span><span class=w> </span><span class=o>*</span><span class=nx>DiskMonitor</span><span class=p>)</span><span class=w> </span><span class=nf>sendEmail</span><span class=p>(</span><span class=nx>alert</span><span class=w> </span><span class=nx>Alert</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>subject</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;[NAS Alert] %s disk anomaly&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>alert</span><span class=p>.</span><span class=nx>Device</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>body</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>`
+</span></span></span><span class=line><span class=cl><span class=s>Device: %s
+</span></span></span><span class=line><span class=cl><span class=s>Time: %s
+</span></span></span><span class=line><span class=cl><span class=s>Details: %s
+</span></span></span><span class=line><span class=cl><span class=s>
+</span></span></span><span class=line><span class=cl><span class=s>Please log in to NAS management interface for details.
+</span></span></span><span class=line><span class=cl><span class=s>`</span><span class=p>,</span><span class=w> </span><span class=nx>alert</span><span class=p>.</span><span class=nx>Device</span><span class=p>,</span><span class=w> </span><span class=nx>alert</span><span class=p>.</span><span class=nx>Time</span><span class=p>.</span><span class=nf>Format</span><span class=p>(</span><span class=s>&#34;2006-01-02 15:04:05&#34;</span><span class=p>),</span><span class=w> </span><span class=nx>alert</span><span class=p>.</span><span class=nx>Message</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>smtp</span><span class=p>.</span><span class=nf>SendMail</span><span class=p>(</span><span class=cm>/* ... */</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=42-prometheus-metrics>4.2 Prometheus Metrics</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>var</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>diskTemperature</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>promauto</span><span class=p>.</span><span class=nf>NewGaugeVec</span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>prometheus</span><span class=p>.</span><span class=nx>GaugeOpts</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>Name</span><span class=p>:</span><span class=w> </span><span class=s>&#34;disk_temperature_celsius&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>Help</span><span class=p>:</span><span class=w> </span><span class=s>&#34;Disk temperature in Celsius&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>[]</span><span class=kt>string</span><span class=p>{</span><span class=s>&#34;device&#34;</span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>diskReallocatedSectors</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>promauto</span><span class=p>.</span><span class=nf>NewGaugeVec</span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>prometheus</span><span class=p>.</span><span class=nx>GaugeOpts</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>Name</span><span class=p>:</span><span class=w> </span><span class=s>&#34;disk_reallocated_sectors_total&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>Help</span><span class=p>:</span><span class=w> </span><span class=s>&#34;Number of reallocated sectors&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>[]</span><span class=kt>string</span><span class=p>{</span><span class=s>&#34;device&#34;</span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>diskSmartPassed</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>promauto</span><span class=p>.</span><span class=nf>NewGaugeVec</span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>prometheus</span><span class=p>.</span><span class=nx>GaugeOpts</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>Name</span><span class=p>:</span><span class=w> </span><span class=s>&#34;disk_smart_passed&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>Help</span><span class=p>:</span><span class=w> </span><span class=s>&#34;SMART self-test passed (1) or failed (0)&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>[]</span><span class=kt>string</span><span class=p>{</span><span class=s>&#34;device&#34;</span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=5-production-considerations>5. Production Considerations</h2><h3 id=51-avoid-frequent-queries>5.1 Avoid Frequent Queries</h3><p>smartctl execution causes disk I/O — too frequent queries affect performance:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Recommended intervals</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>const</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>CheckInterval</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>15</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nx>Minute</span><span class=w> </span><span class=c1>// Normal check</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>QuickInterval</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>5</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nx>Minute</span><span class=w>  </span><span class=c1>// Increased monitoring after finding issues</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=52-handling-ssds>5.2 Handling SSDs</h3><p>SSD SMART attributes differ from HDDs:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>analyzeSSDHealth</span><span class=p>(</span><span class=nx>raw</span><span class=w> </span><span class=o>*</span><span class=nx>SmartctlOutput</span><span class=p>)</span><span class=w> </span><span class=o>*</span><span class=nx>DiskHealth</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// SSD-specific attributes</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>attr</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>raw</span><span class=p>.</span><span class=nx>ATASmartAttributes</span><span class=p>.</span><span class=nx>Table</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>switch</span><span class=w> </span><span class=nx>attr</span><span class=p>.</span><span class=nx>Name</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>case</span><span class=w> </span><span class=s>&#34;Wear_Leveling_Count&#34;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=c1>// 100 = new drive, 0 = end of life</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>if</span><span class=w> </span><span class=nx>attr</span><span class=p>.</span><span class=nx>Value</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>20</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=c1>// Alert</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>case</span><span class=w> </span><span class=s>&#34;Available_Reservd_Space&#34;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=c1>// Reserved space</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=53-raid-scenarios>5.3 RAID Scenarios</h3><p>For software RAID, check underlying disks:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># List RAID members</span>
+</span></span><span class=line><span class=cl>cat /proc/mdstat
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Run smartctl on each member</span>
+</span></span><span class=line><span class=cl>smartctl -a /dev/sda
+</span></span><span class=line><span class=cl>smartctl -a /dev/sdb
+</span></span></code></pre></td></tr></table></div></div><h2 id=6-summary>6. Summary</h2><table><thead><tr><th>Component</th><th>Technology</th></tr></thead><tbody><tr><td>Data collection</td><td>smartctl -j</td></tr><tr><td>Parsing</td><td>Go json.Unmarshal</td></tr><tr><td>Scheduling</td><td>time.Ticker + context</td></tr><tr><td>Alert dedup</td><td>In-memory cache + TTL</td></tr><tr><td>Observability</td><td>Prometheus metrics</td></tr><tr><td>Notifications</td><td>Email / Webhook</td></tr></tbody></table><p><strong>Core principle</strong>: Disk failures are inevitable, but they can be detected early. A good monitoring system gives users enough time to backup data and replace drives.</p><hr><blockquote><p><strong>Related Posts</strong></p><ul><li><a href=/posts/230310-go-daemon-dev/ rel>Go Daemon Development: Graceful SIGTERM Handling and Config Hot-Reload</a></li><li><a href=/posts/230920-oom-killer-debug/ rel>OOM Killer in Practice: Debugging a Container Memory Leak</a></li></ul></blockquote></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2022-08-15</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/220815-disk-health-agent/ data-title="NAS Disk Health Monitoring: From smartctl to Custom Agent" data-hashtags=Go,Monitoring,SMART><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/220815-disk-health-agent/ data-hashtag=Go><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/220815-disk-health-agent/ data-title="NAS Disk Health Monitoring: From smartctl to Custom Agent"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/220815-disk-health-agent/ data-title="NAS Disk Health Monitoring: From smartctl to Custom Agent"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/220815-disk-health-agent/ data-title="NAS Disk Health Monitoring: From smartctl to Custom Agent"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/go/>Go</a>,&nbsp;<a href=/tags/monitoring/>Monitoring</a>,&nbsp;<a href=/tags/smart/>SMART</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/220414-atoi/ class=prev rel=prev title="Production-Grade String Parsing: From atoi to State Machine"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Production-Grade String Parsing: From atoi to State Machine</a>
+<a href=/posts/230310-go-daemon-dev/ class=next rel=next title="Go Daemon Development: Graceful SIGTERM Handling and Config Hot-Reload">Go Daemon Development: Graceful SIGTERM Handling and Config Hot-Reload<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

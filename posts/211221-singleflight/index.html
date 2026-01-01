@@ -1,0 +1,432 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code - zqw's notes</title><meta name=Description content="A deep dive into Go's singleflight package implementation, understanding how request deduplication prevents cache penetration and database avalanche."><meta property="og:url" content="https://uzqw.github.io/posts/211221-singleflight/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code"><meta property="og:description" content="A deep dive into Go's singleflight package implementation, understanding how request deduplication prevents cache penetration and database avalanche."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-12-21T19:07:00+08:00"><meta property="article:modified_time" content="2022-03-17T12:00:00+08:00"><meta property="article:tag" content="Concurrency"><meta property="article:tag" content="Caching"><meta property="article:tag" content="Source Code Analysis"><meta name=twitter:card content="summary"><meta name=twitter:title content="Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code"><meta name=twitter:description content="A deep dive into Go's singleflight package implementation, understanding how request deduplication prevents cache penetration and database avalanche."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/211221-singleflight/><link rel=prev href=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/><link rel=next href=https://uzqw.github.io/posts/211226-https/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/211221-singleflight\/"},"genre":"posts","keywords":"Concurrency, Caching, Source Code Analysis","wordcount":1195,"url":"https:\/\/uzqw.github.io\/posts\/211221-singleflight\/","datePublished":"2021-12-21T19:07:00+08:00","dateModified":"2022-03-17T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"A deep dive into Go's singleflight package implementation, understanding how request deduplication prevents cache penetration and database avalanche."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/211221-singleflight/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/211221-singleflight/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/211221-singleflight/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/211221-singleflight/ selected>English</option><option value=https://uzqw.net/posts/211221-singleflight/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/211221-singleflight/ selected>English</option><option value=https://uzqw.net/posts/211221-singleflight/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/go/><i class="far fa-folder fa-fw" aria-hidden=true></i>Go</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2021-12-21>2021-12-21</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1195 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;6 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#what-is-singleflight>What is Singleflight?</a></li><li><a href=#simulating-cache-stampede>Simulating Cache Stampede</a><ul><li><a href=#server>Server</a></li><li><a href=#client>Client</a></li><li><a href=#results>Results</a></li></ul></li><li><a href=#conclusion>Conclusion</a></li></ul></nav></div></div><div class=content id=content><p>In high-concurrency scenarios, cache stampede can crush your database. Singleflight solves this with an elegantly simple design.</p><p>Code reference:<br><a href=https://github.com/coredns/coredns/blob/v1.9.1/plugin/pkg/singleflight/singleflight.go target=_blank rel="noopener noreffer">https://github.com/coredns/coredns/blob/v1.9.1/plugin/pkg/singleflight/singleflight.go</a></p><h2 id=what-is-singleflight>What is Singleflight?</h2><p>A common pattern in projects:<br>    Set an expiration time for Redis cache. When cache misses, fetch from database.</p><p><strong>Cache stampede</strong> means: A flood of requests bypass cache and hit the database directly.</p><p>As shown in the diagram, when cache expires, before step 2 completes, thousands of requests have already reached step 1, putting massive pressure on the server. How do we solve this? Singleflight provides an elegant approach.</p><p><figure><a class=lightgallery href=../images/2112211222.jpg title="Cache Stampede Diagram" data-thumbnail=../images/2112211222.jpg data-sub-html="<h2>Cache Stampede Scenario</h2><p>Cache Stampede Diagram</p>"><img class=lazyload src=/svg/loading.min.svg data-src=../images/2112211222.jpg data-srcset="../images/2112211222.jpg, ../images/2112211222.jpg 1.5x, ../images/2112211222.jpg 2x" data-sizes=auto alt=../images/2112211222.jpg></a><figcaption class=image-caption>Cache Stampede Scenario</figcaption></figure></p><p>The idea: Only allow one request to penetrate, all others queue at step 3 waiting.</p><p>Here&rsquo;s the singleflight source code:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kn>package</span><span class=w> </span><span class=nx>singleflight</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>import</span><span class=w> </span><span class=s>&#34;sync&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>call</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>wg</span><span class=w>  </span><span class=nx>sync</span><span class=p>.</span><span class=nx>WaitGroup</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>val</span><span class=w> </span><span class=kd>interface</span><span class=p>{}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w> </span><span class=kt>error</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>Group</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>mu</span><span class=w> </span><span class=nx>sync</span><span class=p>.</span><span class=nx>Mutex</span><span class=w>     
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>m</span><span class=w>  </span><span class=kd>map</span><span class=p>[</span><span class=kt>uint64</span><span class=p>]</span><span class=o>*</span><span class=nx>call</span><span class=w> </span><span class=c1>// Lazy init</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>g</span><span class=w> </span><span class=o>*</span><span class=nx>Group</span><span class=p>)</span><span class=w> </span><span class=nf>Do</span><span class=p>(</span><span class=nx>key</span><span class=w> </span><span class=kt>uint64</span><span class=p>,</span><span class=w> </span><span class=nx>fn</span><span class=w> </span><span class=kd>func</span><span class=p>()</span><span class=w> </span><span class=p>(</span><span class=kd>interface</span><span class=p>{},</span><span class=w> </span><span class=kt>error</span><span class=p>))</span><span class=w> </span><span class=p>(</span><span class=kd>interface</span><span class=p>{},</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=o>+----------------------------------+</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=nx>g</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span><span class=w>                      </span><span class=p>|</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=k>if</span><span class=w> </span><span class=nx>g</span><span class=p>.</span><span class=nx>m</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>                  </span><span class=p>|</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w>     </span><span class=nx>g</span><span class=p>.</span><span class=nx>m</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>make</span><span class=p>(</span><span class=kd>map</span><span class=p>[</span><span class=kt>uint64</span><span class=p>]</span><span class=o>*</span><span class=nx>call</span><span class=p>)</span><span class=w> </span><span class=p>|</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=p>}</span><span class=w>                                </span><span class=p>|</span><span class=w>         </span><span class=c1>// When first request arrives</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=k>if</span><span class=w> </span><span class=nx>c</span><span class=p>,</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>g</span><span class=p>.</span><span class=nx>m</span><span class=p>[</span><span class=nx>key</span><span class=p>];</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=p>{</span><span class=w>       </span><span class=p>|</span><span class=w>         </span><span class=c1>// Can&#39;t get value from map (cache miss)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w>     </span><span class=nx>g</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span><span class=w>                </span><span class=o>+------</span><span class=p>&gt;</span><span class=w>  </span><span class=c1>// Creates new map entry (pointer)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w>     </span><span class=nx>c</span><span class=p>.</span><span class=nx>wg</span><span class=p>.</span><span class=nf>Wait</span><span class=p>()</span><span class=w>                  </span><span class=p>|</span><span class=w>         </span><span class=c1>// Other requests get this pointer and block</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w>     </span><span class=k>return</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>val</span><span class=p>,</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>err</span><span class=w>          </span><span class=p>|</span><span class=w>         </span><span class=c1>// Until first request gets value and shares result</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=p>}</span><span class=w>                                </span><span class=p>|</span><span class=w>         
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=nx>c</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>new</span><span class=p>(</span><span class=nx>call</span><span class=p>)</span><span class=w>                   </span><span class=p>|</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>wg</span><span class=p>.</span><span class=nf>Add</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span><span class=w>                      </span><span class=p>|</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=nx>g</span><span class=p>.</span><span class=nx>m</span><span class=p>[</span><span class=nx>key</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>c</span><span class=w>                     </span><span class=p>|</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=nx>g</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span><span class=w>                    </span><span class=p>|</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=o>+----------------------------------+</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=o>+----------------------+</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>val</span><span class=p>,</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>err</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nf>fn</span><span class=p>()</span><span class=w>  </span><span class=p>|</span><span class=w>        </span><span class=c1>// Only first request executes, gets result once</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>wg</span><span class=p>.</span><span class=nf>Done</span><span class=p>()</span><span class=w>          </span><span class=o>+-----</span><span class=p>&gt;</span><span class=w>  </span><span class=c1>// Result stored in map</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=o>+----------------------+</span><span class=w>        </span><span class=c1>// Other requests reuse this result</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=o>+------------------+</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=nx>g</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span><span class=w>      </span><span class=p>|</span><span class=w>       </span><span class=c1>// Only first request reaches here</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=nb>delete</span><span class=p>(</span><span class=nx>g</span><span class=p>.</span><span class=nx>m</span><span class=p>,</span><span class=w> </span><span class=nx>key</span><span class=p>)</span><span class=w> </span><span class=o>+----</span><span class=p>&gt;</span><span class=w>  </span><span class=c1>// After other requests finish reading</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=p>|</span><span class=w> </span><span class=nx>g</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span><span class=w>    </span><span class=p>|</span><span class=w>       </span><span class=c1>// Delete map entry (already in Redis, don&#39;t need it)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=o>+------------------+</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>val</span><span class=p>,</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=simulating-cache-stampede>Simulating Cache Stampede</h2><p>Approach:</p><ol><li>Write a server using httprouter, use two maps to simulate Redis and MySQL. Initially only MySQL has data (so when 5k goroutines hit at once, it&rsquo;s a cache stampede)</li><li>Client generates 5k concurrent requests, observe results</li></ol><h3 id=server>Server</h3><p>See code for:</p><ol><li>Interface definitions</li><li>Simulated data storage</li></ol><p>To more realistically reproduce cache stampede, sleep 2 seconds before reading from MySQL, ensuring lots of requests hit MySQL when singleflight isn&rsquo;t used, for better comparison.</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>  1
+</span><span class=lnt>  2
+</span><span class=lnt>  3
+</span><span class=lnt>  4
+</span><span class=lnt>  5
+</span><span class=lnt>  6
+</span><span class=lnt>  7
+</span><span class=lnt>  8
+</span><span class=lnt>  9
+</span><span class=lnt> 10
+</span><span class=lnt> 11
+</span><span class=lnt> 12
+</span><span class=lnt> 13
+</span><span class=lnt> 14
+</span><span class=lnt> 15
+</span><span class=lnt> 16
+</span><span class=lnt> 17
+</span><span class=lnt> 18
+</span><span class=lnt> 19
+</span><span class=lnt> 20
+</span><span class=lnt> 21
+</span><span class=lnt> 22
+</span><span class=lnt> 23
+</span><span class=lnt> 24
+</span><span class=lnt> 25
+</span><span class=lnt> 26
+</span><span class=lnt> 27
+</span><span class=lnt> 28
+</span><span class=lnt> 29
+</span><span class=lnt> 30
+</span><span class=lnt> 31
+</span><span class=lnt> 32
+</span><span class=lnt> 33
+</span><span class=lnt> 34
+</span><span class=lnt> 35
+</span><span class=lnt> 36
+</span><span class=lnt> 37
+</span><span class=lnt> 38
+</span><span class=lnt> 39
+</span><span class=lnt> 40
+</span><span class=lnt> 41
+</span><span class=lnt> 42
+</span><span class=lnt> 43
+</span><span class=lnt> 44
+</span><span class=lnt> 45
+</span><span class=lnt> 46
+</span><span class=lnt> 47
+</span><span class=lnt> 48
+</span><span class=lnt> 49
+</span><span class=lnt> 50
+</span><span class=lnt> 51
+</span><span class=lnt> 52
+</span><span class=lnt> 53
+</span><span class=lnt> 54
+</span><span class=lnt> 55
+</span><span class=lnt> 56
+</span><span class=lnt> 57
+</span><span class=lnt> 58
+</span><span class=lnt> 59
+</span><span class=lnt> 60
+</span><span class=lnt> 61
+</span><span class=lnt> 62
+</span><span class=lnt> 63
+</span><span class=lnt> 64
+</span><span class=lnt> 65
+</span><span class=lnt> 66
+</span><span class=lnt> 67
+</span><span class=lnt> 68
+</span><span class=lnt> 69
+</span><span class=lnt> 70
+</span><span class=lnt> 71
+</span><span class=lnt> 72
+</span><span class=lnt> 73
+</span><span class=lnt> 74
+</span><span class=lnt> 75
+</span><span class=lnt> 76
+</span><span class=lnt> 77
+</span><span class=lnt> 78
+</span><span class=lnt> 79
+</span><span class=lnt> 80
+</span><span class=lnt> 81
+</span><span class=lnt> 82
+</span><span class=lnt> 83
+</span><span class=lnt> 84
+</span><span class=lnt> 85
+</span><span class=lnt> 86
+</span><span class=lnt> 87
+</span><span class=lnt> 88
+</span><span class=lnt> 89
+</span><span class=lnt> 90
+</span><span class=lnt> 91
+</span><span class=lnt> 92
+</span><span class=lnt> 93
+</span><span class=lnt> 94
+</span><span class=lnt> 95
+</span><span class=lnt> 96
+</span><span class=lnt> 97
+</span><span class=lnt> 98
+</span><span class=lnt> 99
+</span><span class=lnt>100
+</span><span class=lnt>101
+</span><span class=lnt>102
+</span><span class=lnt>103
+</span><span class=lnt>104
+</span><span class=lnt>105
+</span><span class=lnt>106
+</span><span class=lnt>107
+</span><span class=lnt>108
+</span><span class=lnt>109
+</span><span class=lnt>110
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// server/main.go</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>package</span><span class=w> </span><span class=nx>main</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>import</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;errors&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;fmt&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;log&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;net/http&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;sync&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;time&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;github.com/julienschmidt/httprouter&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>var</span><span class=w> </span><span class=nx>group</span><span class=w> </span><span class=o>*</span><span class=nx>Group</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>var</span><span class=w> </span><span class=nx>mux</span><span class=w> </span><span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>var</span><span class=w> </span><span class=nx>rwMux</span><span class=w> </span><span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>var</span><span class=w> </span><span class=nx>redisDataBase</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>var</span><span class=w> </span><span class=nx>mysqlDataBase</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>var</span><span class=w> </span><span class=nx>countRedisHit</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>var</span><span class=w> </span><span class=nx>countMysqlHit</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>GetFromRedis</span><span class=p>(</span><span class=nx>key</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=kt>string</span><span class=p>,</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>redisDataBase</span><span class=p>[</span><span class=nx>key</span><span class=p>];</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>mux</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>countRedisHit</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>mux</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>GetFromMySql</span><span class=p>(</span><span class=nx>key</span><span class=p>);</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=s>&#34;&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>GetFromMySql</span><span class=p>(</span><span class=nx>key</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=kt>string</span><span class=p>,</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>time</span><span class=p>.</span><span class=nf>Sleep</span><span class=p>(</span><span class=nx>time</span><span class=p>.</span><span class=nx>Second</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>mysqlDataBase</span><span class=p>[</span><span class=nx>key</span><span class=p>];</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// write to redis</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>rwMux</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>redisDataBase</span><span class=p>[</span><span class=nx>key</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=s>&#34;data stored in redis&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>rwMux</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Simulates 2s TTL</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Every value stored in redis expires after 2s</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>go</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>key</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>time</span><span class=p>.</span><span class=nf>Sleep</span><span class=p>(</span><span class=nx>time</span><span class=p>.</span><span class=nx>Second</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=mi>2</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>rwMux</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nb>delete</span><span class=p>(</span><span class=nx>redisDataBase</span><span class=p>,</span><span class=w> </span><span class=nx>key</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>rwMux</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}(</span><span class=nx>key</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>mux</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>countMysqlHit</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>mux</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=s>&#34;&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;data not found!&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Normal version</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>GetUserInfo</span><span class=p>(</span><span class=nx>w</span><span class=w> </span><span class=nx>http</span><span class=p>.</span><span class=nx>ResponseWriter</span><span class=p>,</span><span class=w> </span><span class=nx>req</span><span class=w> </span><span class=o>*</span><span class=nx>http</span><span class=p>.</span><span class=nx>Request</span><span class=p>,</span><span class=w> </span><span class=nx>ps</span><span class=w> </span><span class=nx>httprouter</span><span class=p>.</span><span class=nx>Params</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>queryValues</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>req</span><span class=p>.</span><span class=nx>URL</span><span class=p>.</span><span class=nf>Query</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>res</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>GetFromRedis</span><span class=p>(</span><span class=nx>queryValues</span><span class=p>.</span><span class=nf>Get</span><span class=p>(</span><span class=s>&#34;name&#34;</span><span class=p>));</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>log</span><span class=p>.</span><span class=nf>Fatal</span><span class=p>(</span><span class=s>&#34;err:&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Fprintf</span><span class=p>(</span><span class=nx>w</span><span class=p>,</span><span class=w> </span><span class=nx>res</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Singleflight version</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>GetUserInfo1</span><span class=p>(</span><span class=nx>w</span><span class=w> </span><span class=nx>http</span><span class=p>.</span><span class=nx>ResponseWriter</span><span class=p>,</span><span class=w> </span><span class=nx>req</span><span class=w> </span><span class=o>*</span><span class=nx>http</span><span class=p>.</span><span class=nx>Request</span><span class=p>,</span><span class=w> </span><span class=nx>ps</span><span class=w> </span><span class=nx>httprouter</span><span class=p>.</span><span class=nx>Params</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>queryValues</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>req</span><span class=p>.</span><span class=nx>URL</span><span class=p>.</span><span class=nf>Query</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>function</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=kd>func</span><span class=p>()</span><span class=w> </span><span class=p>(</span><span class=kd>interface</span><span class=p>{},</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>res</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>GetFromRedis</span><span class=p>(</span><span class=nx>queryValues</span><span class=p>.</span><span class=nf>Get</span><span class=p>(</span><span class=s>&#34;name&#34;</span><span class=p>));</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=nx>res</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=s>&#34;&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Ah, wasn&#39;t sharing the same group, that&#39;s why it wasn&#39;t working</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>res</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>group</span><span class=p>.</span><span class=nf>Do</span><span class=p>(</span><span class=nb>uint64</span><span class=p>(</span><span class=mi>1</span><span class=p>),</span><span class=w> </span><span class=nx>function</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>log</span><span class=p>.</span><span class=nf>Fatal</span><span class=p>(</span><span class=s>&#34;err from singleflight:&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Fprintf</span><span class=p>(</span><span class=nx>w</span><span class=p>,</span><span class=w> </span><span class=nx>res</span><span class=p>.(</span><span class=kt>string</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>ShowHitCount</span><span class=p>(</span><span class=nx>w</span><span class=w> </span><span class=nx>http</span><span class=p>.</span><span class=nx>ResponseWriter</span><span class=p>,</span><span class=w> </span><span class=nx>req</span><span class=w> </span><span class=o>*</span><span class=nx>http</span><span class=p>.</span><span class=nx>Request</span><span class=p>,</span><span class=w> </span><span class=nx>_</span><span class=w> </span><span class=nx>httprouter</span><span class=p>.</span><span class=nx>Params</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Fprintf</span><span class=p>(</span><span class=nx>w</span><span class=p>,</span><span class=w> </span><span class=s>&#34;redis:%d\nmysql:%d\n&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>countRedisHit</span><span class=p>,</span><span class=w> </span><span class=nx>countMysqlHit</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>init</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>redisDataBase</span><span class=p>,</span><span class=w> </span><span class=nx>mysqlDataBase</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=kt>string</span><span class=p>{},</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=kt>string</span><span class=p>{}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>mysqlDataBase</span><span class=p>[</span><span class=s>&#34;zqw&#34;</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=s>&#34;data stored in mysql&#34;</span><span class=w> </span><span class=c1>// Initially no data in redis</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>group</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=o>&amp;</span><span class=nx>Group</span><span class=p>{}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>hello</span><span class=p>(</span><span class=nx>w</span><span class=w> </span><span class=nx>http</span><span class=p>.</span><span class=nx>ResponseWriter</span><span class=p>,</span><span class=w> </span><span class=nx>req</span><span class=w> </span><span class=o>*</span><span class=nx>http</span><span class=p>.</span><span class=nx>Request</span><span class=p>,</span><span class=w> </span><span class=nx>ps</span><span class=w> </span><span class=nx>httprouter</span><span class=p>.</span><span class=nx>Params</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>queryValues</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>req</span><span class=p>.</span><span class=nx>URL</span><span class=p>.</span><span class=nf>Query</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Fprintf</span><span class=p>(</span><span class=nx>w</span><span class=p>,</span><span class=w> </span><span class=s>&#34;hello, %s!\n&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>queryValues</span><span class=p>.</span><span class=nf>Get</span><span class=p>(</span><span class=s>&#34;name&#34;</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>main</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>router</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>httprouter</span><span class=p>.</span><span class=nf>New</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>router</span><span class=p>.</span><span class=nf>GET</span><span class=p>(</span><span class=s>&#34;/&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>hello</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>router</span><span class=p>.</span><span class=nf>GET</span><span class=p>(</span><span class=s>&#34;/userinfo&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>GetUserInfo</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>router</span><span class=p>.</span><span class=nf>GET</span><span class=p>(</span><span class=s>&#34;/userinfo1&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>GetUserInfo1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>router</span><span class=p>.</span><span class=nf>GET</span><span class=p>(</span><span class=s>&#34;/count&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>ShowHitCount</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>log</span><span class=p>.</span><span class=nf>Fatal</span><span class=p>(</span><span class=nx>http</span><span class=p>.</span><span class=nf>ListenAndServe</span><span class=p>(</span><span class=s>&#34;:9090&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>router</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=client>Client</h3><p>Simple approach (logic in code): concurrent requests, print results, time it</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kn>package</span><span class=w> </span><span class=nx>main</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>import</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;fmt&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;io&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;log&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;net/http&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;sync&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;time&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>curl</span><span class=p>(</span><span class=nx>str</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=kt>string</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>resp</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>client</span><span class=p>.</span><span class=nf>Get</span><span class=p>(</span><span class=nx>str</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>log</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=s>&#34;error:&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>res</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>io</span><span class=p>.</span><span class=nf>ReadAll</span><span class=p>(</span><span class=nx>resp</span><span class=p>.</span><span class=nx>Body</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nx>resp</span><span class=p>.</span><span class=nx>Body</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nb>string</span><span class=p>(</span><span class=nx>res</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>var</span><span class=w> </span><span class=nx>client</span><span class=w> </span><span class=nx>http</span><span class=p>.</span><span class=nx>Client</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>init</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>client</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>http</span><span class=p>.</span><span class=nx>Client</span><span class=p>{}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>main</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>timeStampA</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nf>Now</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nx>client</span><span class=p>.</span><span class=nf>CloseIdleConnections</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>wg</span><span class=w> </span><span class=nx>sync</span><span class=p>.</span><span class=nx>WaitGroup</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>5000</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>wg</span><span class=p>.</span><span class=nf>Add</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>go</span><span class=w> </span><span class=kd>func</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>defer</span><span class=w> </span><span class=nx>wg</span><span class=p>.</span><span class=nf>Done</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=c1>// Alternate between these two</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=cp>//curl(&#34;http://localhost:9090/userinfo?name=zqw&#34;)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nf>curl</span><span class=p>(</span><span class=s>&#34;http://localhost:9090/userinfo1?name=zqw&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>wg</span><span class=p>.</span><span class=nf>Wait</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>res</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>curl</span><span class=p>(</span><span class=s>&#34;http://localhost:9090/count&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=nx>res</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>timeStampB</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nf>Now</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=s>&#34;Total time: &#34;</span><span class=p>,</span><span class=w> </span><span class=nx>timeStampB</span><span class=p>.</span><span class=nf>Sub</span><span class=p>(</span><span class=nx>timeStampA</span><span class=p>).</span><span class=nf>Seconds</span><span class=p>())</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=results>Results</h3><p>Without singleflight:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>redis:0
+</span></span><span class=line><span class=cl>mysql:5000
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Total time:  1.5597763709999999
+</span></span></code></pre></td></tr></table></div></div><p>With singleflight:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>redis:0
+</span></span><span class=line><span class=cl>mysql:1  <span class=c1># Other 4999 requests all shared first request&#39;s result</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Total time:  1.216015732
+</span></span></code></pre></td></tr></table></div></div><p>Results are reproducible.<br>If you see errors, your OS might have too few open file descriptors. Try lowering concurrency.<br>I&rsquo;ve already set <code>ulimit -n 8192</code>.</p><p>Tried 10k concurrent — results were inconsistent.<br>Tried 100k concurrent — constant panics (IO errors at client, or server crashed).</p><h2 id=conclusion>Conclusion</h2><p>Singleflight is compact yet powerful. The concept is worth studying.<br>Essentially it shifts pressure from disk access to memory access.</p><p>Issues I ran into while coding:</p><ol><li>Server crashed frequently (panic on memory access) when writing to Redis (actually writing to map) after MySQL read — fixed by adding locks</li><li>Wrote <code>lock</code> instead of <code>unlock</code>, causing deadlock on server</li><li>Singleflight variable wasn&rsquo;t global, was being redefined in each handler function, so it wasn&rsquo;t working — found the bug after code review</li><li>Concurrency above 50k leads to all kinds of weird errors (runtime io panic), total time 50x+ longer, effectively 10x+ performance degradation — gave up</li></ol></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2022-03-17</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/211221-singleflight/ data-title="Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code" data-hashtags="Concurrency,Caching,Source Code Analysis"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/211221-singleflight/ data-hashtag=Concurrency><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/211221-singleflight/ data-title="Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/211221-singleflight/ data-title="Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/211221-singleflight/ data-title="Go Singleflight Deep Dive: Preventing Cache Stampede with One Line of Code"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/concurrency/>Concurrency</a>,&nbsp;<a href=/tags/caching/>Caching</a>,&nbsp;<a href=/tags/source-code-analysis/>Source Code Analysis</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/211207-compile-nginx-fdfs/ class=prev rel=prev title="Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions</a>
+<a href=/posts/211226-https/ class=next rel=next title="HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms">HTTPS Handshake Optimization: Cutting Latency from 200ms to 50ms<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

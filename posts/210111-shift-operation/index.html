@@ -1,0 +1,574 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems - zqw's notes</title><meta name=Description content="Personal tech blog about Go, Linux, and backend development"><meta property="og:url" content="https://uzqw.github.io/posts/210111-shift-operation/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems"><meta property="og:description" content="Bit operations aren’t just interview questions. From Redis Bitmaps and Kafka ACLs to Linux file permissions, bit operations are fundamental to high-performance systems. This post demonstrates bit operations in real systems through practical examples."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-01-11T12:00:00+08:00"><meta property="article:modified_time" content="2022-03-17T12:00:00+08:00"><meta property="article:tag" content="Bit Operations"><meta property="article:tag" content="Performance"><meta property="article:tag" content="System Design"><meta name=twitter:card content="summary"><meta name=twitter:title content="Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems"><meta name=twitter:description content="Bit operations aren’t just interview questions. From Redis Bitmaps and Kafka ACLs to Linux file permissions, bit operations are fundamental to high-performance systems. This post demonstrates bit operations in real systems through practical examples."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/210111-shift-operation/><link rel=prev href=https://uzqw.github.io/posts/180621-the-sort-algorithm/><link rel=next href=https://uzqw.github.io/posts/210126-flatpak-theme/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/210111-shift-operation\/"},"genre":"posts","keywords":"Bit Operations, Performance, System Design","wordcount":1583,"url":"https:\/\/uzqw.github.io\/posts\/210111-shift-operation\/","datePublished":"2021-01-11T12:00:00+08:00","dateModified":"2022-03-17T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":""}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/210111-shift-operation/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/210111-shift-operation/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/210111-shift-operation/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/210111-shift-operation/ selected>English</option><option value=https://uzqw.net/posts/210111-shift-operation/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/210111-shift-operation/ selected>English</option><option value=https://uzqw.net/posts/210111-shift-operation/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/go/><i class="far fa-folder fa-fw" aria-hidden=true></i>Go</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2021-01-11>2021-01-11</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1583 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;8 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-bit-operations-quick-review>1. Bit Operations Quick Review</a><ul><li><a href=#11-basic-operations>1.1 Basic Operations</a></li><li><a href=#12-common-tricks>1.2 Common Tricks</a></li></ul></li><li><a href=#2-case-1-linux-file-permissions>2. Case 1: Linux File Permissions</a><ul><li><a href=#21-permission-model>2.1 Permission Model</a></li><li><a href=#22-go-implementation>2.2 Go Implementation</a></li></ul></li><li><a href=#3-case-2-rbac-permission-system>3. Case 2: RBAC Permission System</a><ul><li><a href=#31-scenario-analysis>3.1 Scenario Analysis</a></li><li><a href=#32-high-performance-permission-checks>3.2 High-Performance Permission Checks</a></li><li><a href=#33-comparison-with-traditional-approach>3.3 Comparison with Traditional Approach</a></li><li><a href=#34-database-storage>3.4 Database Storage</a></li></ul></li><li><a href=#4-case-3-bitmap-index>4. Case 3: Bitmap Index</a><ul><li><a href=#41-scenario-user-tag-system>4.1 Scenario: User Tag System</a></li><li><a href=#42-fast-filtering>4.2 Fast Filtering</a></li><li><a href=#43-performance-analysis>4.3 Performance Analysis</a></li></ul></li><li><a href=#5-case-4-bloom-filter>5. Case 4: Bloom Filter</a><ul><li><a href=#51-principle>5.1 Principle</a></li><li><a href=#52-use-cases>5.2 Use Cases</a></li></ul></li><li><a href=#6-practical-techniques>6. Practical Techniques</a><ul><li><a href=#61-more-than-64-permissions>6.1 More Than 64 Permissions</a></li><li><a href=#62-atomic-operations-concurrent-safe>6.2 Atomic Operations (Concurrent-Safe)</a></li><li><a href=#63-json-serialization>6.3 JSON Serialization</a></li></ul></li><li><a href=#7-summary>7. Summary</a></li></ul></nav></div></div><div class=content id=content><p>Bit operations aren&rsquo;t just interview questions. From Redis Bitmaps and Kafka ACLs to Linux file permissions, bit operations are fundamental to high-performance systems. This post demonstrates bit operations in real systems through practical examples.</p><h2 id=1-bit-operations-quick-review>1. Bit Operations Quick Review</h2><h3 id=11-basic-operations>1.1 Basic Operations</h3><table><thead><tr><th>Operation</th><th>Symbol</th><th>Example</th><th>Result</th></tr></thead><tbody><tr><td>AND</td><td>&</td><td>1010 & 1100</td><td>1000</td></tr><tr><td>OR</td><td>|</td><td>1010 | 1100</td><td>1110</td></tr><tr><td>XOR</td><td>^</td><td>1010 ^ 1100</td><td>0110</td></tr><tr><td>NOT</td><td>~</td><td>~1010</td><td>0101</td></tr><tr><td>Left shift</td><td>&#171;</td><td>0001 &#171; 2</td><td>0100</td></tr><tr><td>Right shift</td><td>&#187;</td><td>1000 &#187; 2</td><td>0010</td></tr></tbody></table><h3 id=12-common-tricks>1.2 Common Tricks</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Set bit n to 1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>x</span><span class=w> </span><span class=o>|=</span><span class=w> </span><span class=p>(</span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=nx>n</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Clear bit n</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>x</span><span class=w> </span><span class=o>&amp;=</span><span class=w> </span><span class=p>^(</span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=nx>n</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Toggle bit n</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>x</span><span class=w> </span><span class=p>^=</span><span class=w> </span><span class=p>(</span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=nx>n</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Check bit n</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>(</span><span class=nx>x</span><span class=w> </span><span class=o>&gt;&gt;</span><span class=w> </span><span class=nx>n</span><span class=p>)</span><span class=w> </span><span class=o>&amp;</span><span class=w> </span><span class=mi>1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Get lowest set bit</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>x</span><span class=w> </span><span class=o>&amp;</span><span class=w> </span><span class=p>(</span><span class=o>-</span><span class=nx>x</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Clear lowest set bit</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>x</span><span class=w> </span><span class=o>&amp;</span><span class=w> </span><span class=p>(</span><span class=nx>x</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=2-case-1-linux-file-permissions>2. Case 1: Linux File Permissions</h2><h3 id=21-permission-model>2.1 Permission Model</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>-rwxr-xr--  <span class=m>1</span> user group  <span class=m>4096</span> Dec <span class=m>10</span> 10:00 file.txt
+</span></span><span class=line><span class=cl> ^^^
+</span></span><span class=line><span class=cl> <span class=m>421</span> <span class=o>(</span>owner: <span class=nb>read</span> + write + <span class=nv>execute</span> <span class=o>=</span> 7<span class=o>)</span>
+</span></span><span class=line><span class=cl>    ^^^
+</span></span><span class=line><span class=cl>    <span class=m>421</span> <span class=o>(</span>group: <span class=nb>read</span> + <span class=nv>execute</span> <span class=o>=</span> 5<span class=o>)</span>
+</span></span><span class=line><span class=cl>       ^^^
+</span></span><span class=line><span class=cl>       <span class=m>421</span> <span class=o>(</span>others: <span class=nb>read</span> <span class=o>=</span> 4<span class=o>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Permission value: 754</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=22-go-implementation>2.2 Go Implementation</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>Permission</span><span class=w> </span><span class=kt>uint32</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>const</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermRead</span><span class=w>    </span><span class=nx>Permission</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>0</span><span class=w>  </span><span class=c1>// 001 = 1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermWrite</span><span class=w>   </span><span class=nx>Permission</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>1</span><span class=w>  </span><span class=c1>// 010 = 2</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermExecute</span><span class=w> </span><span class=nx>Permission</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>2</span><span class=w>  </span><span class=c1>// 100 = 4</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Check permission</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=nx>Permission</span><span class=p>)</span><span class=w> </span><span class=nf>Has</span><span class=p>(</span><span class=nx>perm</span><span class=w> </span><span class=nx>Permission</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>p</span><span class=o>&amp;</span><span class=nx>perm</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=nx>perm</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Grant permission</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>Permission</span><span class=p>)</span><span class=w> </span><span class=nf>Grant</span><span class=p>(</span><span class=nx>perm</span><span class=w> </span><span class=nx>Permission</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=o>*</span><span class=nx>p</span><span class=w> </span><span class=o>|=</span><span class=w> </span><span class=nx>perm</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Revoke permission</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>Permission</span><span class=p>)</span><span class=w> </span><span class=nf>Revoke</span><span class=p>(</span><span class=nx>perm</span><span class=w> </span><span class=nx>Permission</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=o>*</span><span class=nx>p</span><span class=w> </span><span class=o>&amp;=</span><span class=w> </span><span class=p>^</span><span class=nx>perm</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Usage example</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>main</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>perm</span><span class=w> </span><span class=nx>Permission</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>PermRead</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=nx>PermWrite</span><span class=w>  </span><span class=c1>// 011 = 3</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=nx>perm</span><span class=p>.</span><span class=nf>Has</span><span class=p>(</span><span class=nx>PermRead</span><span class=p>))</span><span class=w>     </span><span class=c1>// true</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=nx>perm</span><span class=p>.</span><span class=nf>Has</span><span class=p>(</span><span class=nx>PermExecute</span><span class=p>))</span><span class=w>  </span><span class=c1>// false</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>perm</span><span class=p>.</span><span class=nf>Grant</span><span class=p>(</span><span class=nx>PermExecute</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;%03b\n&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>perm</span><span class=p>)</span><span class=w>  </span><span class=c1>// 111</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>perm</span><span class=p>.</span><span class=nf>Revoke</span><span class=p>(</span><span class=nx>PermWrite</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;%03b\n&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>perm</span><span class=p>)</span><span class=w>  </span><span class=c1>// 101</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=3-case-2-rbac-permission-system>3. Case 2: RBAC Permission System</h2><h3 id=31-scenario-analysis>3.1 Scenario Analysis</h3><p>Imagine a SaaS system with these permissions:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>const</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermViewDashboard</span><span class=w>   </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>0</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermEditProfile</span><span class=w>     </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermCreateProject</span><span class=w>   </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>2</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermDeleteProject</span><span class=w>   </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>3</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermInviteUser</span><span class=w>      </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>4</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermRemoveUser</span><span class=w>      </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>5</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermManageBilling</span><span class=w>   </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>6</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PermAccessAdmin</span><span class=w>     </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>7</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// ... up to 64 permissions</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Predefined roles</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>const</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>RoleViewer</span><span class=w> </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>PermViewDashboard</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>RoleEditor</span><span class=w> </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>PermViewDashboard</span><span class=w> </span><span class=p>|</span><span class=w> 
+</span></span></span><span class=line><span class=cl><span class=w>                        </span><span class=nx>PermEditProfile</span><span class=w> </span><span class=p>|</span><span class=w> 
+</span></span></span><span class=line><span class=cl><span class=w>                        </span><span class=nx>PermCreateProject</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>RoleAdmin</span><span class=w> </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>PermViewDashboard</span><span class=w> </span><span class=p>|</span><span class=w> 
+</span></span></span><span class=line><span class=cl><span class=w>                       </span><span class=nx>PermEditProfile</span><span class=w> </span><span class=p>|</span><span class=w> 
+</span></span></span><span class=line><span class=cl><span class=w>                       </span><span class=nx>PermCreateProject</span><span class=w> </span><span class=p>|</span><span class=w> 
+</span></span></span><span class=line><span class=cl><span class=w>                       </span><span class=nx>PermDeleteProject</span><span class=w> </span><span class=p>|</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                       </span><span class=nx>PermInviteUser</span><span class=w> </span><span class=p>|</span><span class=w> 
+</span></span></span><span class=line><span class=cl><span class=w>                       </span><span class=nx>PermRemoveUser</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>RoleOwner</span><span class=w> </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mh>0xFFFFFFFFFFFFFFFF</span><span class=w>  </span><span class=c1>// All permissions</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=32-high-performance-permission-checks>3.2 High-Performance Permission Checks</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>User</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ID</span><span class=w>          </span><span class=kt>int64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Permissions</span><span class=w> </span><span class=kt>uint64</span><span class=w>  </span><span class=c1>// Only 8 bytes stores all permissions!</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// O(1) permission check</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>u</span><span class=w> </span><span class=o>*</span><span class=nx>User</span><span class=p>)</span><span class=w> </span><span class=nf>Can</span><span class=p>(</span><span class=nx>perm</span><span class=w> </span><span class=kt>uint64</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>u</span><span class=p>.</span><span class=nx>Permissions</span><span class=o>&amp;</span><span class=nx>perm</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=nx>perm</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Check multiple permissions (all must match)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>u</span><span class=w> </span><span class=o>*</span><span class=nx>User</span><span class=p>)</span><span class=w> </span><span class=nf>CanAll</span><span class=p>(</span><span class=nx>perms</span><span class=w> </span><span class=o>...</span><span class=kt>uint64</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>required</span><span class=w> </span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>p</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>perms</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>required</span><span class=w> </span><span class=o>|=</span><span class=w> </span><span class=nx>p</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>u</span><span class=p>.</span><span class=nx>Permissions</span><span class=o>&amp;</span><span class=nx>required</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=nx>required</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Check multiple permissions (any matches)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>u</span><span class=w> </span><span class=o>*</span><span class=nx>User</span><span class=p>)</span><span class=w> </span><span class=nf>CanAny</span><span class=p>(</span><span class=nx>perms</span><span class=w> </span><span class=o>...</span><span class=kt>uint64</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>required</span><span class=w> </span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>p</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>perms</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>required</span><span class=w> </span><span class=o>|=</span><span class=w> </span><span class=nx>p</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>u</span><span class=p>.</span><span class=nx>Permissions</span><span class=o>&amp;</span><span class=nx>required</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=mi>0</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=33-comparison-with-traditional-approach>3.3 Comparison with Traditional Approach</h3><p><strong>Traditional (relational tables)</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-sql data-lang=sql><span class=line><span class=cl><span class=c1>-- Query user permissions
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=k>SELECT</span><span class=w> </span><span class=n>p</span><span class=p>.</span><span class=n>name</span><span class=w> 
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>FROM</span><span class=w> </span><span class=n>user_roles</span><span class=w> </span><span class=n>ur</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>JOIN</span><span class=w> </span><span class=n>role_permissions</span><span class=w> </span><span class=n>rp</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=n>ur</span><span class=p>.</span><span class=n>role_id</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>rp</span><span class=p>.</span><span class=n>role_id</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>JOIN</span><span class=w> </span><span class=n>permissions</span><span class=w> </span><span class=n>p</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=n>rp</span><span class=p>.</span><span class=n>permission_id</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>p</span><span class=p>.</span><span class=n>id</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>WHERE</span><span class=w> </span><span class=n>ur</span><span class=p>.</span><span class=n>user_id</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=o>?</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>-- Check permission
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=k>SELECT</span><span class=w> </span><span class=k>COUNT</span><span class=p>(</span><span class=o>*</span><span class=p>)</span><span class=w> 
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>FROM</span><span class=w> </span><span class=n>user_roles</span><span class=w> </span><span class=n>ur</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>JOIN</span><span class=w> </span><span class=n>role_permissions</span><span class=w> </span><span class=n>rp</span><span class=w> </span><span class=k>ON</span><span class=w> </span><span class=n>ur</span><span class=p>.</span><span class=n>role_id</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>rp</span><span class=p>.</span><span class=n>role_id</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>WHERE</span><span class=w> </span><span class=n>ur</span><span class=p>.</span><span class=n>user_id</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=o>?</span><span class=w> </span><span class=k>AND</span><span class=w> </span><span class=n>rp</span><span class=p>.</span><span class=n>permission_id</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=o>?</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Performance comparison</strong>:</p><table><thead><tr><th>Aspect</th><th>Relational</th><th>Bitmap</th></tr></thead><tbody><tr><td>Storage</td><td>3 tables + indexes</td><td>1 uint64 field</td></tr><tr><td>Check permission</td><td>JOIN query</td><td>Bit operation O(1)</td></tr><tr><td>Grant permission</td><td>INSERT</td><td>OR operation</td></tr><tr><td>Network overhead</td><td>Multiple DB roundtrips</td><td>None (already in memory)</td></tr></tbody></table><h3 id=34-database-storage>3.4 Database Storage</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Save to database</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>u</span><span class=w> </span><span class=o>*</span><span class=nx>User</span><span class=p>)</span><span class=w> </span><span class=nf>Save</span><span class=p>(</span><span class=nx>db</span><span class=w> </span><span class=o>*</span><span class=nx>sql</span><span class=p>.</span><span class=nx>DB</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>db</span><span class=p>.</span><span class=nf>Exec</span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=s>&#34;UPDATE users SET permissions = ? WHERE id = ?&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>u</span><span class=p>.</span><span class=nx>Permissions</span><span class=p>,</span><span class=w>  </span><span class=c1>// Store uint64 directly</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>u</span><span class=p>.</span><span class=nx>ID</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Load from database</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>LoadUser</span><span class=p>(</span><span class=nx>db</span><span class=w> </span><span class=o>*</span><span class=nx>sql</span><span class=p>.</span><span class=nx>DB</span><span class=p>,</span><span class=w> </span><span class=nx>id</span><span class=w> </span><span class=kt>int64</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=o>*</span><span class=nx>User</span><span class=p>,</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>u</span><span class=w> </span><span class=nx>User</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>db</span><span class=p>.</span><span class=nf>QueryRow</span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=s>&#34;SELECT id, permissions FROM users WHERE id = ?&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>id</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>).</span><span class=nf>Scan</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>u</span><span class=p>.</span><span class=nx>ID</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>u</span><span class=p>.</span><span class=nx>Permissions</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=o>&amp;</span><span class=nx>u</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=4-case-3-bitmap-index>4. Case 3: Bitmap Index</h2><h3 id=41-scenario-user-tag-system>4.1 Scenario: User Tag System</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// User tags (up to 64)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>const</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>TagPremium</span><span class=w>      </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>0</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>TagVerified</span><span class=w>     </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>TagNewUser</span><span class=w>      </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>2</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>TagHighValue</span><span class=w>    </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>3</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>TagChurningRisk</span><span class=w> </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=mi>4</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// ...</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>UserIndex</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Each tag has a bitmap</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// bitmap[i] bit j means user j has tag i</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>bitmaps</span><span class=w> </span><span class=p>[</span><span class=mi>64</span><span class=p>][]</span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>userCount</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=42-fast-filtering>4.2 Fast Filtering</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Find all &#34;Premium AND Verified AND NOT ChurningRisk&#34; users</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>idx</span><span class=w> </span><span class=o>*</span><span class=nx>UserIndex</span><span class=p>)</span><span class=w> </span><span class=nf>Query</span><span class=p>(</span><span class=nx>must</span><span class=p>,</span><span class=w> </span><span class=nx>mustNot</span><span class=w> </span><span class=kt>uint64</span><span class=p>)</span><span class=w> </span><span class=p>[]</span><span class=kt>int</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>result</span><span class=w> </span><span class=p>[]</span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Calculate match for each block</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>blocks</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=p>(</span><span class=nx>idx</span><span class=p>.</span><span class=nx>userCount</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=mi>63</span><span class=p>)</span><span class=w> </span><span class=o>/</span><span class=w> </span><span class=mi>64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>b</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>b</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>blocks</span><span class=p>;</span><span class=w> </span><span class=nx>b</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=kd>var</span><span class=w> </span><span class=nx>match</span><span class=w> </span><span class=kt>uint64</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mh>0xFFFFFFFFFFFFFFFF</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// AND conditions</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>64</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>if</span><span class=w> </span><span class=nx>must</span><span class=o>&amp;</span><span class=p>(</span><span class=mi>1</span><span class=o>&lt;&lt;</span><span class=nx>i</span><span class=p>)</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>match</span><span class=w> </span><span class=o>&amp;=</span><span class=w> </span><span class=nx>idx</span><span class=p>.</span><span class=nx>bitmaps</span><span class=p>[</span><span class=nx>i</span><span class=p>][</span><span class=nx>b</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// NOT conditions</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>64</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>if</span><span class=w> </span><span class=nx>mustNot</span><span class=o>&amp;</span><span class=p>(</span><span class=mi>1</span><span class=o>&lt;&lt;</span><span class=nx>i</span><span class=p>)</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>match</span><span class=w> </span><span class=o>&amp;=</span><span class=w> </span><span class=p>^</span><span class=nx>idx</span><span class=p>.</span><span class=nx>bitmaps</span><span class=p>[</span><span class=nx>i</span><span class=p>][</span><span class=nx>b</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Extract matching user IDs</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>for</span><span class=w> </span><span class=nx>match</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>pos</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>bits</span><span class=p>.</span><span class=nf>TrailingZeros64</span><span class=p>(</span><span class=nx>match</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>result</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>result</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=o>*</span><span class=mi>64</span><span class=o>+</span><span class=nx>pos</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>match</span><span class=w> </span><span class=o>&amp;=</span><span class=w> </span><span class=nx>match</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=w>  </span><span class=c1>// Clear lowest set bit</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>result</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=43-performance-analysis>4.3 Performance Analysis</h3><p>For 10 million users, 64 tags:</p><table><thead><tr><th>Approach</th><th>Storage</th><th>Query Complexity</th></tr></thead><tbody><tr><td>Traditional table</td><td>10M × 64 rows</td><td>O(n) scan</td></tr><tr><td>Bitmap</td><td>64 × 1.25MB = 80MB</td><td>O(n/64) bit ops</td></tr></tbody></table><p><strong>Actual speed</strong>: Modern CPUs process 64 bits at once; with SIMD it&rsquo;s even faster.</p><h2 id=5-case-4-bloom-filter>5. Case 4: Bloom Filter</h2><h3 id=51-principle>5.1 Principle</h3><p>Bloom filters use multiple hashes + bitmap for efficient &ldquo;might exist&rdquo; checks:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>BloomFilter</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>bits</span><span class=w>    </span><span class=p>[]</span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>numHash</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>bf</span><span class=w> </span><span class=o>*</span><span class=nx>BloomFilter</span><span class=p>)</span><span class=w> </span><span class=nf>Add</span><span class=p>(</span><span class=nx>item</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>bf</span><span class=p>.</span><span class=nx>numHash</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>hash</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>bf</span><span class=p>.</span><span class=nf>hash</span><span class=p>(</span><span class=nx>item</span><span class=p>,</span><span class=w> </span><span class=nx>i</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>idx</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>hash</span><span class=w> </span><span class=o>/</span><span class=w> </span><span class=mi>64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>bit</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>hash</span><span class=w> </span><span class=o>%</span><span class=w> </span><span class=mi>64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>bf</span><span class=p>.</span><span class=nx>bits</span><span class=p>[</span><span class=nx>idx</span><span class=p>]</span><span class=w> </span><span class=o>|=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=nx>bit</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>bf</span><span class=w> </span><span class=o>*</span><span class=nx>BloomFilter</span><span class=p>)</span><span class=w> </span><span class=nf>MayContain</span><span class=p>(</span><span class=nx>item</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>bf</span><span class=p>.</span><span class=nx>numHash</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>hash</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>bf</span><span class=p>.</span><span class=nf>hash</span><span class=p>(</span><span class=nx>item</span><span class=p>,</span><span class=w> </span><span class=nx>i</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>idx</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>hash</span><span class=w> </span><span class=o>/</span><span class=w> </span><span class=mi>64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>bit</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>hash</span><span class=w> </span><span class=o>%</span><span class=w> </span><span class=mi>64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>bf</span><span class=p>.</span><span class=nx>bits</span><span class=p>[</span><span class=nx>idx</span><span class=p>]</span><span class=o>&amp;</span><span class=p>(</span><span class=mi>1</span><span class=o>&lt;&lt;</span><span class=nx>bit</span><span class=p>)</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=kc>false</span><span class=w>  </span><span class=c1>// Definitely doesn&#39;t exist</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>true</span><span class=w>  </span><span class=c1>// Might exist</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=52-use-cases>5.2 Use Cases</h3><ul><li><strong>Redis</strong>: Check if key exists</li><li><strong>Databases</strong>: Skip SSTables without target data</li><li><strong>Crawlers</strong>: URL deduplication</li><li><strong>Recommendation systems</strong>: Filter already recommended content</li></ul><h2 id=6-practical-techniques>6. Practical Techniques</h2><h3 id=61-more-than-64-permissions>6.1 More Than 64 Permissions</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>LargePermission</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>bits</span><span class=w> </span><span class=p>[]</span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>LargePermission</span><span class=p>)</span><span class=w> </span><span class=nf>Set</span><span class=p>(</span><span class=nx>n</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>idx</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>/</span><span class=w> </span><span class=mi>64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>bit</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>%</span><span class=w> </span><span class=mi>64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Dynamic expansion</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>p</span><span class=p>.</span><span class=nx>bits</span><span class=p>)</span><span class=w> </span><span class=o>&lt;=</span><span class=w> </span><span class=nx>idx</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>p</span><span class=p>.</span><span class=nx>bits</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>p</span><span class=p>.</span><span class=nx>bits</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>p</span><span class=p>.</span><span class=nx>bits</span><span class=p>[</span><span class=nx>idx</span><span class=p>]</span><span class=w> </span><span class=o>|=</span><span class=w> </span><span class=mi>1</span><span class=w> </span><span class=o>&lt;&lt;</span><span class=w> </span><span class=nx>bit</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>LargePermission</span><span class=p>)</span><span class=w> </span><span class=nf>Has</span><span class=p>(</span><span class=nx>n</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>idx</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>/</span><span class=w> </span><span class=mi>64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>bit</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>%</span><span class=w> </span><span class=mi>64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>idx</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>p</span><span class=p>.</span><span class=nx>bits</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=kc>false</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>p</span><span class=p>.</span><span class=nx>bits</span><span class=p>[</span><span class=nx>idx</span><span class=p>]</span><span class=o>&amp;</span><span class=p>(</span><span class=mi>1</span><span class=o>&lt;&lt;</span><span class=nx>bit</span><span class=p>)</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=mi>0</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=62-atomic-operations-concurrent-safe>6.2 Atomic Operations (Concurrent-Safe)</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kn>import</span><span class=w> </span><span class=s>&#34;sync/atomic&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>AtomicPermission</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>bits</span><span class=w> </span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>AtomicPermission</span><span class=p>)</span><span class=w> </span><span class=nf>Grant</span><span class=p>(</span><span class=nx>perm</span><span class=w> </span><span class=kt>uint64</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>old</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>atomic</span><span class=p>.</span><span class=nf>LoadUint64</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>p</span><span class=p>.</span><span class=nx>bits</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>new</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>old</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=nx>perm</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>atomic</span><span class=p>.</span><span class=nf>CompareAndSwapUint64</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>p</span><span class=p>.</span><span class=nx>bits</span><span class=p>,</span><span class=w> </span><span class=nx>old</span><span class=p>,</span><span class=w> </span><span class=nx>new</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=o>*</span><span class=nx>AtomicPermission</span><span class=p>)</span><span class=w> </span><span class=nf>Has</span><span class=p>(</span><span class=nx>perm</span><span class=w> </span><span class=kt>uint64</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>atomic</span><span class=p>.</span><span class=nf>LoadUint64</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>p</span><span class=p>.</span><span class=nx>bits</span><span class=p>)</span><span class=o>&amp;</span><span class=nx>perm</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=nx>perm</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=63-json-serialization>6.3 JSON Serialization</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>Permission</span><span class=w> </span><span class=kt>uint64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>p</span><span class=w> </span><span class=nx>Permission</span><span class=p>)</span><span class=w> </span><span class=nf>MarshalJSON</span><span class=p>()</span><span class=w> </span><span class=p>([]</span><span class=kt>byte</span><span class=p>,</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Convert to permission name list for readability</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>names</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=p>[]</span><span class=kt>string</span><span class=p>{}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>p</span><span class=o>&amp;</span><span class=nx>PermRead</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>names</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>names</span><span class=p>,</span><span class=w> </span><span class=s>&#34;read&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>p</span><span class=o>&amp;</span><span class=nx>PermWrite</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>names</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>names</span><span class=p>,</span><span class=w> </span><span class=s>&#34;write&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// ...</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>json</span><span class=p>.</span><span class=nf>Marshal</span><span class=p>(</span><span class=nx>names</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=7-summary>7. Summary</h2><table><thead><tr><th>Use Case</th><th>Bit Operation Advantage</th></tr></thead><tbody><tr><td>Permission system</td><td>O(1) check, 8 bytes stores 64 permissions</td></tr><tr><td>Tags/Categories</td><td>Fast filtering, compound conditions</td></tr><tr><td>Bloom filter</td><td>Space-efficient existence check</td></tr><tr><td>State machines</td><td>Compact multi-state representation</td></tr></tbody></table><p><strong>Key takeaways</strong>:</p><ol><li>Bit operations bring CPU instruction-level optimization to application layer</li><li>Space compression + constant time = win-win</li><li>Great for &ldquo;one of many&rdquo; or &ldquo;many of many&rdquo; scenarios</li><li>Combined with atomics enables lock-free concurrency</li></ol></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2022-03-17</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/210111-shift-operation/ data-title="Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems" data-hashtags="Bit Operations,Performance,System Design"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/210111-shift-operation/ data-hashtag="Bit Operations"><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/210111-shift-operation/ data-title="Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/210111-shift-operation/ data-title="Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/210111-shift-operation/ data-title="Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/bit-operations/>Bit Operations</a>,&nbsp;<a href=/tags/performance/>Performance</a>,&nbsp;<a href=/tags/system-design/>System Design</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/180621-the-sort-algorithm/ class=prev rel=prev title="From TimSort to pdqsort: Engineering Optimizations in Production Sorting"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>From TimSort to pdqsort: Engineering Optimizations in Production Sorting</a>
+<a href=/posts/210126-flatpak-theme/ class=next rel=next title="Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles">Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

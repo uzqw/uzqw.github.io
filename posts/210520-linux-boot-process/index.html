@@ -1,0 +1,390 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Linux Boot Process: Complete Guide from Power Button to Login - zqw's notes</title><meta name=Description content="Deep dive into every stage of Linux boot: BIOS/UEFI, Bootloader (GRUB2), Kernel loading, initramfs to rootfs transition, Systemd initialization, and debugging tips for each stage."><meta property="og:url" content="https://uzqw.github.io/posts/210520-linux-boot-process/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Linux Boot Process: Complete Guide from Power Button to Login"><meta property="og:description" content="Deep dive into every stage of Linux boot: BIOS/UEFI, Bootloader (GRUB2), Kernel loading, initramfs to rootfs transition, Systemd initialization, and debugging tips for each stage."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-05-20T10:00:00+08:00"><meta property="article:modified_time" content="2021-05-20T10:00:00+08:00"><meta property="article:tag" content="Boot Process"><meta property="article:tag" content="Systemd"><meta property="article:tag" content="Debugging"><meta name=twitter:card content="summary"><meta name=twitter:title content="Linux Boot Process: Complete Guide from Power Button to Login"><meta name=twitter:description content="Deep dive into every stage of Linux boot: BIOS/UEFI, Bootloader (GRUB2), Kernel loading, initramfs to rootfs transition, Systemd initialization, and debugging tips for each stage."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/210520-linux-boot-process/><link rel=prev href=https://uzqw.github.io/posts/210321-hugo-auto-deployment/><link rel=next href=https://uzqw.github.io/posts/210703-lru-learning/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Linux Boot Process: Complete Guide from Power Button to Login","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/210520-linux-boot-process\/"},"genre":"posts","keywords":"Boot Process, Systemd, Debugging","wordcount":1326,"url":"https:\/\/uzqw.github.io\/posts\/210520-linux-boot-process\/","datePublished":"2021-05-20T10:00:00+08:00","dateModified":"2021-05-20T10:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"Deep dive into every stage of Linux boot: BIOS/UEFI, Bootloader (GRUB2), Kernel loading, initramfs to rootfs transition, Systemd initialization, and debugging tips for each stage."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/210520-linux-boot-process/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/210520-linux-boot-process/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/210520-linux-boot-process/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/210520-linux-boot-process/ selected>English</option><option value=https://uzqw.net/posts/210520-linux-boot-process/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/210520-linux-boot-process/ selected>English</option><option value=https://uzqw.net/posts/210520-linux-boot-process/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Linux Boot Process: Complete Guide from Power Button to Login</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/linux/><i class="far fa-folder fa-fw" aria-hidden=true></i>Linux</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2021-05-20>2021-05-20</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1326 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;7 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-boot-process-overview>1. Boot Process Overview</a></li><li><a href=#2-stage-1-biosuefi>2. Stage 1: BIOS/UEFI</a><ul><li><a href=#21-bios-vs-uefi>2.1 BIOS vs UEFI</a></li><li><a href=#22-what-it-does>2.2 What It Does</a></li><li><a href=#23-troubleshooting>2.3 Troubleshooting</a></li></ul></li><li><a href=#3-stage-2-grub2>3. Stage 2: GRUB2</a><ul><li><a href=#31-grub2s-job>3.1 GRUB2&rsquo;s Job</a></li><li><a href=#32-key-files>3.2 Key Files</a></li><li><a href=#33-grubcfg-example>3.3 grub.cfg Example</a></li><li><a href=#34-modify-and-update>3.4 Modify and Update</a></li><li><a href=#35-troubleshooting>3.5 Troubleshooting</a></li></ul></li><li><a href=#4-stage-3-kernel-initialization>4. Stage 3: Kernel Initialization</a><ul><li><a href=#41-what-does-the-kernel-do>4.1 What Does the Kernel Do?</a></li><li><a href=#42-boot-parameters>4.2 Boot Parameters</a></li><li><a href=#43-troubleshooting>4.3 Troubleshooting</a></li></ul></li><li><a href=#5-stage-4-initramfs>5. Stage 4: initramfs</a><ul><li><a href=#51-why-do-we-need-initramfs>5.1 Why Do We Need initramfs?</a></li><li><a href=#52-initramfs-contents>5.2 initramfs Contents</a></li><li><a href=#53-workflow>5.3 Workflow</a></li><li><a href=#54-troubleshooting>5.4 Troubleshooting</a></li></ul></li><li><a href=#6-stage-5-systemd>6. Stage 5: Systemd</a><ul><li><a href=#61-what-is-systemd>6.1 What is Systemd?</a></li><li><a href=#62-targets>6.2 Targets</a></li><li><a href=#63-service-dependencies>6.3 Service Dependencies</a></li><li><a href=#64-troubleshooting>6.4 Troubleshooting</a></li></ul></li><li><a href=#7-practical-customizing-boot-process>7. Practical: Customizing Boot Process</a><ul><li><a href=#71-add-script-to-run-at-boot>7.1 Add Script to Run at Boot</a></li><li><a href=#72-debugging-boot-issues>7.2 Debugging Boot Issues</a></li></ul></li><li><a href=#8-summary>8. Summary</a></li></ul></nav></div></div><div class=content id=content><p>To be a solid systems engineer, you need to deeply understand the Linux boot process. Only by knowing &ldquo;what normal looks like&rdquo; can you quickly troubleshoot when things go wrong. This post walks through every stage from power button to login screen.</p><h2 id=1-boot-process-overview>1. Boot Process Overview</h2><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-gdscript3 data-lang=gdscript3><span class=line><span class=cl><span class=err>┌─────────────────────────────────────────────────────────────────────────┐</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>                           <span class=n>POWER</span> <span class=n>ON</span>                                       <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>└───────────────────────────────┬─────────────────────────────────────────┘</span>
+</span></span><span class=line><span class=cl>                                <span class=err>▼</span>
+</span></span><span class=line><span class=cl><span class=err>┌─────────────────────────────────────────────────────────────────────────┐</span>
+</span></span><span class=line><span class=cl><span class=err>│</span> <span class=mf>1.</span> <span class=n>BIOS</span><span class=o>/</span><span class=n>UEFI</span>                                                            <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Hardware</span> <span class=bp>self</span><span class=o>-</span><span class=n>test</span> <span class=p>(</span><span class=n>POST</span><span class=p>)</span>                                          <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Load</span> <span class=n>Bootloader</span>                                                    <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>└───────────────────────────────┬─────────────────────────────────────────┘</span>
+</span></span><span class=line><span class=cl>                                <span class=err>▼</span>
+</span></span><span class=line><span class=cl><span class=err>┌─────────────────────────────────────────────────────────────────────────┐</span>
+</span></span><span class=line><span class=cl><span class=err>│</span> <span class=mf>2.</span> <span class=n>Bootloader</span> <span class=p>(</span><span class=n>GRUB2</span><span class=p>)</span>                                                   <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Display</span> <span class=n>boot</span> <span class=n>menu</span>                                                  <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Load</span> <span class=n>Kernel</span> <span class=o>+</span> <span class=n>initramfs</span> <span class=n>into</span> <span class=n>memory</span>                                <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Pass</span> <span class=n>boot</span> <span class=n>parameters</span>                                               <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>└───────────────────────────────┬─────────────────────────────────────────┘</span>
+</span></span><span class=line><span class=cl>                                <span class=err>▼</span>
+</span></span><span class=line><span class=cl><span class=err>┌─────────────────────────────────────────────────────────────────────────┐</span>
+</span></span><span class=line><span class=cl><span class=err>│</span> <span class=mf>3.</span> <span class=n>Kernel</span> <span class=n>Init</span>                                                          <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Decompress</span> <span class=n>itself</span>                                                  <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Initialize</span> <span class=n>hardware</span><span class=o>/</span><span class=n>interrupts</span><span class=o>/</span><span class=n>memory</span>                              <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Mount</span> <span class=n>initramfs</span> <span class=n>as</span> <span class=n>temporary</span> <span class=n>root</span>                                  <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Execute</span> <span class=o>/</span><span class=n>init</span>                                                      <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>└───────────────────────────────┬─────────────────────────────────────────┘</span>
+</span></span><span class=line><span class=cl>                                <span class=err>▼</span>
+</span></span><span class=line><span class=cl><span class=err>┌─────────────────────────────────────────────────────────────────────────┐</span>
+</span></span><span class=line><span class=cl><span class=err>│</span> <span class=mf>4.</span> <span class=n>initramfs</span>                                                            <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Load</span> <span class=n>essential</span> <span class=n>drivers</span> <span class=p>(</span><span class=n>disk</span><span class=p>,</span> <span class=n>filesystem</span><span class=p>)</span>                          <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Find</span> <span class=n>real</span> <span class=n>root</span> <span class=n>partition</span>                                           <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>pivot_root</span> <span class=n>to</span> <span class=n>actual</span> <span class=n>root</span> <span class=n>filesystem</span>                               <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>└───────────────────────────────┬─────────────────────────────────────────┘</span>
+</span></span><span class=line><span class=cl>                                <span class=err>▼</span>
+</span></span><span class=line><span class=cl><span class=err>┌─────────────────────────────────────────────────────────────────────────┐</span>
+</span></span><span class=line><span class=cl><span class=err>│</span> <span class=mf>5.</span> <span class=n>Systemd</span> <span class=p>(</span><span class=n>PID</span> <span class=mi>1</span><span class=p>)</span>                                                      <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Start</span> <span class=n>system</span> <span class=n>services</span> <span class=ow>in</span> <span class=n>parallel</span>                                  <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Mount</span> <span class=n>other</span> <span class=n>filesystems</span>                                            <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>Reach</span> <span class=n>target</span> <span class=p>(</span><span class=n>default</span><span class=o>.</span><span class=n>target</span><span class=p>)</span>                                      <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>└───────────────────────────────┬─────────────────────────────────────────┘</span>
+</span></span><span class=line><span class=cl>                                <span class=err>▼</span>
+</span></span><span class=line><span class=cl><span class=err>┌─────────────────────────────────────────────────────────────────────────┐</span>
+</span></span><span class=line><span class=cl><span class=err>│</span> <span class=mf>6.</span> <span class=n>Login</span>                                                                <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>    <span class=o>-</span> <span class=n>getty</span> <span class=p>(</span><span class=n>TTY</span><span class=p>)</span> <span class=ow>or</span> <span class=n>Display</span> <span class=n>Manager</span> <span class=p>(</span><span class=n>GUI</span><span class=p>)</span>                               <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>└─────────────────────────────────────────────────────────────────────────┘</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=2-stage-1-biosuefi>2. Stage 1: BIOS/UEFI</h2><h3 id=21-bios-vs-uefi>2.1 BIOS vs UEFI</h3><table><thead><tr><th>Feature</th><th>BIOS (Legacy)</th><th>UEFI</th></tr></thead><tbody><tr><td>Era</td><td>1981</td><td>2005+</td></tr><tr><td>Boot method</td><td>MBR (Master Boot Record)</td><td>GPT + EFI System Partition</td></tr><tr><td>Max disk size</td><td>2TB</td><td>9.4ZB (effectively unlimited)</td></tr><tr><td>Boot speed</td><td>Slower</td><td>Faster</td></tr><tr><td>Secure Boot</td><td>No</td><td>Yes</td></tr></tbody></table><h3 id=22-what-it-does>2.2 What It Does</h3><ol><li><p><strong>POST (Power-On Self-Test)</strong></p><ul><li>Check CPU, memory, graphics</li><li>One short beep = OK, continuous beeps = hardware failure</li></ul></li><li><p><strong>Read boot device order</strong></p><ul><li>Configured in BIOS settings</li><li>Try hard drive, USB, network boot in sequence</li></ul></li><li><p><strong>Load Bootloader</strong></p><ul><li>BIOS: Read first 512 bytes of MBR</li><li>UEFI: Read .efi file from ESP partition</li></ul></li></ol><h3 id=23-troubleshooting>2.3 Troubleshooting</h3><p><strong>Symptom</strong>: No response on boot or error messages</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Check boot mode</span>
+</span></span><span class=line><span class=cl><span class=o>[</span> -d /sys/firmware/efi <span class=o>]</span> <span class=o>&amp;&amp;</span> <span class=nb>echo</span> <span class=s2>&#34;UEFI&#34;</span> <span class=o>||</span> <span class=nb>echo</span> <span class=s2>&#34;BIOS&#34;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># UEFI boot entry management</span>
+</span></span><span class=line><span class=cl>efibootmgr -v
+</span></span></code></pre></td></tr></table></div></div><h2 id=3-stage-2-grub2>3. Stage 2: GRUB2</h2><h3 id=31-grub2s-job>3.1 GRUB2&rsquo;s Job</h3><ul><li>Provide boot menu (multi-OS selection)</li><li>Load Kernel image into memory</li><li>Load initramfs into memory</li><li>Pass boot parameters to Kernel</li></ul><h3 id=32-key-files>3.2 Key Files</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>/boot/grub/grub.cfg           <span class=c1># Main config (auto-generated, don&#39;t edit directly)</span>
+</span></span><span class=line><span class=cl>/etc/default/grub             <span class=c1># User config</span>
+</span></span><span class=line><span class=cl>/etc/grub.d/                   <span class=c1># Config scripts</span>
+</span></span><span class=line><span class=cl>/boot/vmlinuz-*               <span class=c1># Kernel image</span>
+</span></span><span class=line><span class=cl>/boot/initrd.img-* or initramfs-*  <span class=c1># initramfs</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=33-grubcfg-example>3.3 grub.cfg Example</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>menuentry <span class=s1>&#39;Ubuntu&#39;</span> --class ubuntu <span class=o>{</span>
+</span></span><span class=line><span class=cl>    <span class=nb>set</span> <span class=nv>root</span><span class=o>=</span><span class=s1>&#39;hd0,gpt2&#39;</span>
+</span></span><span class=line><span class=cl>    linux /vmlinuz-5.15.0-generic <span class=nv>root</span><span class=o>=</span><span class=nv>UUID</span><span class=o>=</span>xxxxx ro quiet splash
+</span></span><span class=line><span class=cl>    initrd /initrd.img-5.15.0-generic
+</span></span><span class=line><span class=cl><span class=o>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>Breakdown:</p><ul><li><code>set root</code>: Partition containing Kernel</li><li><code>linux</code>: Kernel path + boot parameters</li><li><code>root=UUID=xxx</code>: Tells Kernel where real root partition is</li><li><code>initrd</code>: initramfs path</li></ul><h3 id=34-modify-and-update>3.4 Modify and Update</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Edit default parameters</span>
+</span></span><span class=line><span class=cl>sudo vim /etc/default/grub
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Regenerate grub.cfg</span>
+</span></span><span class=line><span class=cl>sudo update-grub   <span class=c1># Debian/Ubuntu</span>
+</span></span><span class=line><span class=cl>sudo grub2-mkconfig -o /boot/grub2/grub.cfg  <span class=c1># RHEL/CentOS</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=35-troubleshooting>3.5 Troubleshooting</h3><p><strong>Symptom</strong>: Stuck at GRUB menu or <code>grub rescue></code></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># At GRUB command line</span>
+</span></span><span class=line><span class=cl>grub&gt; ls                    <span class=c1># List partitions</span>
+</span></span><span class=line><span class=cl>grub&gt; ls <span class=o>(</span>hd0,gpt2<span class=o>)</span>/        <span class=c1># View partition contents</span>
+</span></span><span class=line><span class=cl>grub&gt; <span class=nb>set</span> <span class=nv>root</span><span class=o>=(</span>hd0,gpt2<span class=o>)</span>   <span class=c1># Set root</span>
+</span></span><span class=line><span class=cl>grub&gt; linux /vmlinuz <span class=nv>root</span><span class=o>=</span>/dev/sda2
+</span></span><span class=line><span class=cl>grub&gt; initrd /initrd.img
+</span></span><span class=line><span class=cl>grub&gt; boot
+</span></span></code></pre></td></tr></table></div></div><h2 id=4-stage-3-kernel-initialization>4. Stage 3: Kernel Initialization</h2><h3 id=41-what-does-the-kernel-do>4.1 What Does the Kernel Do?</h3><ol><li><strong>Decompress itself</strong> (if compressed vmlinuz)</li><li><strong>Set CPU mode</strong> (real mode → protected mode → 64-bit long mode)</li><li><strong>Initialize memory management</strong> (page tables)</li><li><strong>Initialize interrupts</strong> (IDT)</li><li><strong>Initialize scheduler</strong></li><li><strong>Mount initramfs as root</strong></li><li><strong>Execute /init or /sbin/init</strong></li></ol><h3 id=42-boot-parameters>4.2 Boot Parameters</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># View current boot parameters</span>
+</span></span><span class=line><span class=cl>cat /proc/cmdline
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Common parameters</span>
+</span></span><span class=line><span class=cl><span class=nv>root</span><span class=o>=</span><span class=nv>UUID</span><span class=o>=</span>xxx      <span class=c1># Root partition</span>
+</span></span><span class=line><span class=cl>ro / rw            <span class=c1># Read-only/read-write mount</span>
+</span></span><span class=line><span class=cl>quiet              <span class=c1># Reduce output</span>
+</span></span><span class=line><span class=cl><span class=nv>init</span><span class=o>=</span>/bin/bash     <span class=c1># Specify init program (rescue mode)</span>
+</span></span><span class=line><span class=cl>single / <span class=m>1</span>         <span class=c1># Single-user mode</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=43-troubleshooting>4.3 Troubleshooting</h3><p><strong>Symptom</strong>: Kernel panic</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Common causes</span>
+</span></span><span class=line><span class=cl>1. <span class=nv>root</span><span class=o>=</span> points to non-existent device
+</span></span><span class=line><span class=cl>2. initramfs corrupted
+</span></span><span class=line><span class=cl>3. Required driver not compiled in kernel and not in initramfs
+</span></span></code></pre></td></tr></table></div></div><p><strong>Solutions</strong>:</p><ul><li>Enter GRUB command line, modify root parameter</li><li>Use Live CD to regenerate initramfs</li></ul><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Using Live CD</span>
+</span></span><span class=line><span class=cl>mount /dev/sda2 /mnt
+</span></span><span class=line><span class=cl>mount --bind /dev /mnt/dev
+</span></span><span class=line><span class=cl>mount --bind /proc /mnt/proc
+</span></span><span class=line><span class=cl>mount --bind /sys /mnt/sys
+</span></span><span class=line><span class=cl>chroot /mnt
+</span></span><span class=line><span class=cl>update-initramfs -u -k all
+</span></span></code></pre></td></tr></table></div></div><h2 id=5-stage-4-initramfs>5. Stage 4: initramfs</h2><h3 id=51-why-do-we-need-initramfs>5.1 Why Do We Need initramfs?</h3><p><strong>Chicken and egg problem</strong>:</p><ul><li>To mount root filesystem, need drivers</li><li>Drivers are in root filesystem</li><li>Root filesystem isn&rsquo;t mounted yet&mldr;</li></ul><p><strong>Solution</strong>: initramfs is a temporary in-memory filesystem containing the minimal driver set needed to mount the real root.</p><h3 id=52-initramfs-contents>5.2 initramfs Contents</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># View initramfs contents</span>
+</span></span><span class=line><span class=cl>lsinitramfs /boot/initrd.img-<span class=k>$(</span>uname -r<span class=k>)</span> <span class=p>|</span> head -50
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Typical structure</span>
+</span></span><span class=line><span class=cl>/init                       <span class=c1># Startup script</span>
+</span></span><span class=line><span class=cl>/bin/                       <span class=c1># busybox tools</span>
+</span></span><span class=line><span class=cl>/lib/modules/              <span class=c1># Driver modules</span>
+</span></span><span class=line><span class=cl>/etc/                       <span class=c1># Config</span>
+</span></span><span class=line><span class=cl>/scripts/                   <span class=c1># Init scripts</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=53-workflow>5.3 Workflow</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>1. Kernel decompresses initramfs into memory
+</span></span><span class=line><span class=cl>2. Mounts as temporary root <span class=o>(</span>/<span class=o>)</span>
+</span></span><span class=line><span class=cl>3. Executes /init script
+</span></span><span class=line><span class=cl>4. Loads essential drivers <span class=o>(</span>SATA/NVMe/LVM/encryption etc<span class=o>)</span>
+</span></span><span class=line><span class=cl>5. Finds real root partition
+</span></span><span class=line><span class=cl>6. pivot_root or switch_root to real root
+</span></span><span class=line><span class=cl>7. Executes /sbin/init <span class=o>(</span>Systemd<span class=o>)</span> on real root
+</span></span></code></pre></td></tr></table></div></div><h3 id=54-troubleshooting>5.4 Troubleshooting</h3><p><strong>Symptom</strong>: Dropped to initramfs shell</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># initramfs gives you a busybox shell</span>
+</span></span><span class=line><span class=cl><span class=o>(</span>initramfs<span class=o>)</span> <span class=c1># Check devices</span>
+</span></span><span class=line><span class=cl><span class=o>(</span>initramfs<span class=o>)</span> blkid
+</span></span><span class=line><span class=cl><span class=o>(</span>initramfs<span class=o>)</span> ls /dev/sd*
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Manually try mounting root partition</span>
+</span></span><span class=line><span class=cl><span class=o>(</span>initramfs<span class=o>)</span> mount /dev/sda2 /root
+</span></span><span class=line><span class=cl><span class=o>(</span>initramfs<span class=o>)</span> ls /root
+</span></span></code></pre></td></tr></table></div></div><p><strong>Regenerate</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Debian/Ubuntu</span>
+</span></span><span class=line><span class=cl>update-initramfs -u
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># RHEL/CentOS</span>
+</span></span><span class=line><span class=cl>dracut -f
+</span></span></code></pre></td></tr></table></div></div><h2 id=6-stage-5-systemd>6. Stage 5: Systemd</h2><h3 id=61-what-is-systemd>6.1 What is Systemd?</h3><p>Systemd is the <strong>init system</strong> for modern Linux distros, PID is always 1. It handles:</p><ul><li>Starting and managing system services</li><li>Mounting filesystems</li><li>Managing user logins</li><li>Log management (journald)</li></ul><h3 id=62-targets>6.2 Targets</h3><p>Systemd uses targets instead of traditional runlevels:</p><table><thead><tr><th>Runlevel</th><th>Target</th><th>Purpose</th></tr></thead><tbody><tr><td>0</td><td>poweroff.target</td><td>Shutdown</td></tr><tr><td>1</td><td>rescue.target</td><td>Single-user/rescue mode</td></tr><tr><td>3</td><td>multi-user.target</td><td>Multi-user CLI</td></tr><tr><td>5</td><td>graphical.target</td><td>GUI</td></tr><tr><td>6</td><td>reboot.target</td><td>Reboot</td></tr></tbody></table><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># View default target</span>
+</span></span><span class=line><span class=cl>systemctl get-default
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Set default target</span>
+</span></span><span class=line><span class=cl>systemctl set-default multi-user.target
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Temporarily switch target</span>
+</span></span><span class=line><span class=cl>systemctl isolate rescue.target
+</span></span></code></pre></td></tr></table></div></div><h3 id=63-service-dependencies>6.3 Service Dependencies</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># View service dependencies</span>
+</span></span><span class=line><span class=cl>systemctl list-dependencies sshd.service
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># View startup order</span>
+</span></span><span class=line><span class=cl>systemctl list-dependencies --before sshd.service
+</span></span><span class=line><span class=cl>systemctl list-dependencies --after sshd.service
+</span></span></code></pre></td></tr></table></div></div><h3 id=64-troubleshooting>6.4 Troubleshooting</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># View failed services</span>
+</span></span><span class=line><span class=cl>systemctl --failed
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># View service logs</span>
+</span></span><span class=line><span class=cl>journalctl -u sshd.service -b
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># View boot logs</span>
+</span></span><span class=line><span class=cl>journalctl -b
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Analyze boot time</span>
+</span></span><span class=line><span class=cl>systemd-analyze
+</span></span><span class=line><span class=cl>systemd-analyze blame
+</span></span><span class=line><span class=cl>systemd-analyze critical-chain
+</span></span></code></pre></td></tr></table></div></div><h2 id=7-practical-customizing-boot-process>7. Practical: Customizing Boot Process</h2><h3 id=71-add-script-to-run-at-boot>7.1 Add Script to Run at Boot</h3><p><strong>Method 1: rc.local (compatibility)</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Create rc-local.service</span>
+</span></span><span class=line><span class=cl>cat &gt; /etc/systemd/system/rc-local.service <span class=s>&lt;&lt; &#39;EOF&#39;
+</span></span></span><span class=line><span class=cl><span class=s>[Unit]
+</span></span></span><span class=line><span class=cl><span class=s>Description=rc.local Compatibility
+</span></span></span><span class=line><span class=cl><span class=s>After=network.target
+</span></span></span><span class=line><span class=cl><span class=s>
+</span></span></span><span class=line><span class=cl><span class=s>[Service]
+</span></span></span><span class=line><span class=cl><span class=s>Type=oneshot
+</span></span></span><span class=line><span class=cl><span class=s>ExecStart=/etc/rc.local
+</span></span></span><span class=line><span class=cl><span class=s>RemainAfterExit=yes
+</span></span></span><span class=line><span class=cl><span class=s>
+</span></span></span><span class=line><span class=cl><span class=s>[Install]
+</span></span></span><span class=line><span class=cl><span class=s>WantedBy=multi-user.target
+</span></span></span><span class=line><span class=cl><span class=s>EOF</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Create script</span>
+</span></span><span class=line><span class=cl><span class=nb>echo</span> <span class=s1>&#39;#!/bin/bash
+</span></span></span><span class=line><span class=cl><span class=s1>echo &#34;Hello from rc.local&#34; &gt; /tmp/boot-test
+</span></span></span><span class=line><span class=cl><span class=s1>&#39;</span> &gt; /etc/rc.local
+</span></span><span class=line><span class=cl>chmod +x /etc/rc.local
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Enable</span>
+</span></span><span class=line><span class=cl>systemctl <span class=nb>enable</span> rc-local.service
+</span></span></code></pre></td></tr></table></div></div><p><strong>Method 2: Create Systemd Service (recommended)</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>cat &gt; /etc/systemd/system/my-startup.service <span class=s>&lt;&lt; &#39;EOF&#39;
+</span></span></span><span class=line><span class=cl><span class=s>[Unit]
+</span></span></span><span class=line><span class=cl><span class=s>Description=My Startup Script
+</span></span></span><span class=line><span class=cl><span class=s>After=network.target
+</span></span></span><span class=line><span class=cl><span class=s>
+</span></span></span><span class=line><span class=cl><span class=s>[Service]
+</span></span></span><span class=line><span class=cl><span class=s>Type=oneshot
+</span></span></span><span class=line><span class=cl><span class=s>ExecStart=/usr/local/bin/my-startup.sh
+</span></span></span><span class=line><span class=cl><span class=s>
+</span></span></span><span class=line><span class=cl><span class=s>[Install]
+</span></span></span><span class=line><span class=cl><span class=s>WantedBy=multi-user.target
+</span></span></span><span class=line><span class=cl><span class=s>EOF</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>systemctl <span class=nb>enable</span> my-startup.service
+</span></span></code></pre></td></tr></table></div></div><h3 id=72-debugging-boot-issues>7.2 Debugging Boot Issues</h3><p><strong>Strategy 1: Increase output</strong></p><p>Remove <code>quiet splash</code> from GRUB, add <code>debug</code> parameter.</p><p><strong>Strategy 2: Use serial console</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># GRUB parameter</span>
+</span></span><span class=line><span class=cl><span class=nv>console</span><span class=o>=</span>ttyS0,115200n8 <span class=nv>console</span><span class=o>=</span>tty0
+</span></span></code></pre></td></tr></table></div></div><p><strong>Strategy 3: Enter rescue mode</strong></p><p>At GRUB menu press <code>e</code>, append <code>init=/bin/bash</code> to linux line.</p><h2 id=8-summary>8. Summary</h2><table><thead><tr><th>Stage</th><th>Key Component</th><th>Debug Entry Point</th></tr></thead><tbody><tr><td>BIOS/UEFI</td><td>Firmware settings</td><td>F2/DEL to enter setup</td></tr><tr><td>GRUB</td><td>/boot/grub/grub.cfg</td><td>GRUB command line</td></tr><tr><td>Kernel</td><td>vmlinuz + parameters</td><td>Boot parameter debugging</td></tr><tr><td>initramfs</td><td>/init script</td><td>initramfs shell</td></tr><tr><td>Systemd</td><td>service/target</td><td>journalctl</td></tr></tbody></table><p><strong>Key insight</strong>: Each stage does one thing — prepare the environment for the next stage. Once you understand this chain, you&rsquo;ll know where to look when things break.</p></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2021-05-20</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/210520-linux-boot-process/ data-title="Linux Boot Process: Complete Guide from Power Button to Login" data-hashtags="Boot Process,Systemd,Debugging"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/210520-linux-boot-process/ data-hashtag="Boot Process"><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/210520-linux-boot-process/ data-title="Linux Boot Process: Complete Guide from Power Button to Login"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/210520-linux-boot-process/ data-title="Linux Boot Process: Complete Guide from Power Button to Login"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/210520-linux-boot-process/ data-title="Linux Boot Process: Complete Guide from Power Button to Login"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/boot-process/>Boot Process</a>,&nbsp;<a href=/tags/systemd/>Systemd</a>,&nbsp;<a href=/tags/debugging/>Debugging</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/210321-hugo-auto-deployment/ class=prev rel=prev title="Hugo Blog CI/CD: GitHub Actions Auto-Build and Multi-Environment Deployment"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Hugo Blog CI/CD: GitHub Actions Auto-Build and Multi-Environment Deployment</a>
+<a href=/posts/210703-lru-learning/ class=next rel=next title="Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs">Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>
