@@ -1,0 +1,404 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Temporal Single-Node Reliability Deep Dive: How It Survives Server Crashes, Network Failures, and Rollback Errors - zqw's notes</title><meta name=Description content="A deep dive into Temporal's reliability guarantees on a single-node deployment: Event History recovery after Server crashes, retry and heartbeat strategies for network failures, and ultimate fallback mechanisms when compensation rollbacks fail."><meta property="og:url" content="https://uzqw.github.io/posts/260213-temporal-reliability/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Temporal Single-Node Reliability Deep Dive: How It Survives Server Crashes, Network Failures, and Rollback Errors"><meta property="og:description" content="A deep dive into Temporal's reliability guarantees on a single-node deployment: Event History recovery after Server crashes, retry and heartbeat strategies for network failures, and ultimate fallback mechanisms when compensation rollbacks fail."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2026-02-13T10:00:00+08:00"><meta property="article:modified_time" content="2026-02-13T10:00:00+08:00"><meta property="article:tag" content="Temporal"><meta property="article:tag" content="Go"><meta property="article:tag" content="Reliability"><meta name=twitter:card content="summary"><meta name=twitter:title content="Temporal Single-Node Reliability Deep Dive: How It Survives Server Crashes, Network Failures, and Rollback Errors"><meta name=twitter:description content="A deep dive into Temporal's reliability guarantees on a single-node deployment: Event History recovery after Server crashes, retry and heartbeat strategies for network failures, and ultimate fallback mechanisms when compensation rollbacks fail."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/260213-temporal-reliability/><link rel=prev href=https://uzqw.github.io/posts/251210-dive-into-k8s-02/><link rel=next href=https://uzqw.github.io/posts/260216-hnsw-implementation/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Temporal Single-Node Reliability Deep Dive: How It Survives Server Crashes, Network Failures, and Rollback Errors","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/260213-temporal-reliability\/"},"genre":"posts","keywords":"Temporal, Go, Reliability","wordcount":1941,"url":"https:\/\/uzqw.github.io\/posts\/260213-temporal-reliability\/","datePublished":"2026-02-13T10:00:00+08:00","dateModified":"2026-02-13T10:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"A deep dive into Temporal's reliability guarantees on a single-node deployment: Event History recovery after Server crashes, retry and heartbeat strategies for network failures, and ultimate fallback mechanisms when compensation rollbacks fail."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/260213-temporal-reliability/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/260213-temporal-reliability/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/260213-temporal-reliability/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/260213-temporal-reliability/ selected>English</option><option value=https://uzqw.net/posts/260213-temporal-reliability/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/260213-temporal-reliability/ selected>English</option><option value=https://uzqw.net/posts/260213-temporal-reliability/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Temporal Single-Node Reliability Deep Dive: How It Survives Server Crashes, Network Failures, and Rollback Errors</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/distributed-systems/><i class="far fa-folder fa-fw" aria-hidden=true></i>Distributed Systems</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2026-02-13>2026-02-13</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1941 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;10 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-understand-the-architecture-boundary-first>1. Understand the Architecture Boundary First</a></li><li><a href=#2-server-crash-how-event-history-saves-the-day>2. Server Crash: How Event History Saves the Day</a><ul><li><a href=#21-persistence-mechanism-write-first-acknowledge-later>2.1 Persistence Mechanism: Write First, Acknowledge Later</a></li><li><a href=#22-three-crash-recovery-scenarios>2.2 Three Crash Recovery Scenarios</a></li><li><a href=#23-timer-and-schedule-persistence>2.3 Timer and Schedule Persistence</a></li></ul></li><li><a href=#3-network-failures-triple-protection-for-activity-external-calls>3. Network Failures: Triple Protection for Activity External Calls</a><ul><li><a href=#31-layer-1-retrypolicy-auto-retry>3.1 Layer 1: RetryPolicy Auto-Retry</a></li><li><a href=#32-layer-2-heartbeat--lifeline-for-long-running-tasks>3.2 Layer 2: Heartbeat — Lifeline for Long-Running Tasks</a></li><li><a href=#33-layer-3-activity-idempotency-design>3.3 Layer 3: Activity Idempotency Design</a></li></ul></li><li><a href=#4-rollback-failure-ultimate-fallback-for-compensation-chains>4. Rollback Failure: Ultimate Fallback for Compensation Chains</a><ul><li><a href=#41-the-problem-compensation-itself-can-fail>4.1 The Problem: Compensation Itself Can Fail</a></li><li><a href=#42-temporals-fallback-strategies>4.2 Temporal&rsquo;s Fallback Strategies</a></li><li><a href=#43-generic-saga-compensation-framework>4.3 Generic Saga Compensation Framework</a></li></ul></li><li><a href=#5-reliability-layers-summary>5. Reliability Layers Summary</a></li></ul></nav></div></div><div class=content id=content><p>Writing business logic with Temporal is pure joy — &ldquo;code like a single-machine program, get distributed fault tolerance for free.&rdquo; But after the honeymoon phase, a nagging question remains: <strong>Is it really reliable?</strong> What if the Server crashes? What about network partitions? What if the rollback itself fails? This article tears apart these questions from the ground up.</p><h2 id=1-understand-the-architecture-boundary-first>1. Understand the Architecture Boundary First</h2><p>Before discussing reliability, we need to map out each component&rsquo;s responsibilities in a single-node Temporal deployment:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>┌──────────────────────────────────────────────────────┐
+</span></span><span class=line><span class=cl>│                  Temporal Server                     │
+</span></span><span class=line><span class=cl>│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐    │
+</span></span><span class=line><span class=cl>│  │ Frontend │  │ Matching │  │     History      │    │
+</span></span><span class=line><span class=cl>│  │ Service  │  │ Service  │  │     Service      │    │
+</span></span><span class=line><span class=cl>│  └────┬─────┘  └─────┬────┘  └─────────┬────────┘    │
+</span></span><span class=line><span class=cl>│       │              │                 │             │
+</span></span><span class=line><span class=cl>│       └──────────────┼─────────────────┘             │
+</span></span><span class=line><span class=cl>│                      │                               │
+</span></span><span class=line><span class=cl>│              ┌───────▼───────┐                       │
+</span></span><span class=line><span class=cl>│              │   Persistence │                       │
+</span></span><span class=line><span class=cl>│              │  (MySQL/PG/   │                       │
+</span></span><span class=line><span class=cl>│              │   SQLite)     │                       │
+</span></span><span class=line><span class=cl>│              └───────────────┘                       │
+</span></span><span class=line><span class=cl>└──────────────────────────────────────────────────────┘
+</span></span><span class=line><span class=cl>        ▲                           ▲
+</span></span><span class=line><span class=cl>        │ gRPC                      │ gRPC
+</span></span><span class=line><span class=cl>        │                           │
+</span></span><span class=line><span class=cl>┌───────┴────────┐          ┌───────┴────────┐
+</span></span><span class=line><span class=cl>│  Temporal CLI  │          │     Worker     │
+</span></span><span class=line><span class=cl>│  (Start Wkfl)  │          │  (Run Activity)│
+</span></span><span class=line><span class=cl>└────────────────┘          └────────────────┘
+</span></span></code></pre></td></tr></table></div></div><p><strong>Component Responsibilities</strong>:</p><ul><li><strong>Frontend Service</strong>: The &ldquo;gateway&rdquo; of Temporal Server. All external requests (starting Workflows, querying status, sending Signals) enter through its gRPC interface. It handles request validation, routing, and rate limiting — it does not store any state itself.</li><li><strong>Matching Service</strong>: The task dispatcher. It maintains Task Queues and matches pending Activity/Workflow Tasks to idle Workers. Think of it as the &ldquo;assignment coordinator.&rdquo;</li><li><strong>History Service</strong>: The core of the core. It maintains the Event History for each Workflow, handles state transitions, Timer scheduling, and Event persistence. The vast majority of Temporal&rsquo;s reliability guarantees happen at this layer.</li><li><strong>Temporal CLI (tctl / temporal)</strong>: A command-line client tool for interacting with the Server — starting Workflows, querying status, sending Signals, managing Namespaces, etc. In code, you typically use the Temporal SDK&rsquo;s <code>client.Dial()</code> instead; both serve the same role as &ldquo;the party that initiates requests.&rdquo;</li><li><strong>Worker</strong>: A program you write yourself, registering Workflow and Activity functions before connecting to the Server. Workers continuously poll the Task Queue to pick up and execute tasks. They are inherently <strong>stateless</strong> — all progress and results are reported back to the Server for persistence. If a Worker crashes, just spin up another one; the Workflow&rsquo;s state is unaffected.</li></ul><p><strong>Key insight</strong>:</p><table><thead><tr><th>Component</th><th>Crash Impact</th><th>State Location</th></tr></thead><tbody><tr><td>Worker</td><td>Activity execution interrupted</td><td>Stateless (state lives on Server side)</td></tr><tr><td>Temporal Server</td><td>New tasks cannot be scheduled</td><td>State persisted in database</td></tr><tr><td>Database (MySQL/PG)</td><td><strong>Game over</strong></td><td>This is the true lifeline</td></tr></tbody></table><blockquote><p><strong>Core conclusion</strong>: Temporal&rsquo;s single-node reliability = the database&rsquo;s reliability. Server and Worker are recoverable; only database loss is catastrophic.</p></blockquote><h2 id=2-server-crash-how-event-history-saves-the-day>2. Server Crash: How Event History Saves the Day</h2><h3 id=21-persistence-mechanism-write-first-acknowledge-later>2.1 Persistence Mechanism: Write First, Acknowledge Later</h3><p>The History Service strictly follows a <strong>Write-Ahead</strong> principle for every operation:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Worker reports Activity completion
+</span></span><span class=line><span class=cl>    │
+</span></span><span class=line><span class=cl>    ▼
+</span></span><span class=line><span class=cl>History Service receives request
+</span></span><span class=line><span class=cl>    │
+</span></span><span class=line><span class=cl>    ▼
+</span></span><span class=line><span class=cl>① Write Event to database (INSERT INTO events ...)  &lt;- Persist first
+</span></span><span class=line><span class=cl>    │
+</span></span><span class=line><span class=cl>    ▼
+</span></span><span class=line><span class=cl>② Return ACK to Worker                              &lt;- Acknowledge second
+</span></span><span class=line><span class=cl>    │
+</span></span><span class=line><span class=cl>    ▼
+</span></span><span class=line><span class=cl>③ Schedule next Activity (via Matching Service Task Queue)
+</span></span></code></pre></td></tr></table></div></div><p><strong>This means</strong>: If Server crashes before step ② — the Event is already in the database. After restart, the History Service recovers state from the database, and the Workflow continues.</p><p>If Server crashes before step ① — this Event is indeed lost. But since the Worker never received an ACK, it will retry, and the Activity gets re-executed.</p><h3 id=22-three-crash-recovery-scenarios>2.2 Three Crash Recovery Scenarios</h3><p><strong>Scenario 1: Server crashes during Activity execution</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Timeline:
+</span></span><span class=line><span class=cl>  t0: Workflow schedules ActivityA
+</span></span><span class=line><span class=cl>  t1: Worker picks up ActivityA and starts executing
+</span></span><span class=line><span class=cl>  t2: Server crashes
+</span></span><span class=line><span class=cl>  t3: ActivityA completes, Worker tries to report -&gt; Fails (connection lost)
+</span></span><span class=line><span class=cl>  t4: Server restarts
+</span></span><span class=line><span class=cl>  t5: Worker re-reports ActivityA result -&gt; Server accepts
+</span></span><span class=line><span class=cl>  t6: Workflow continues with ActivityB
+</span></span></code></pre></td></tr></table></div></div><p><strong>Key point</strong>: Workers have built-in reconnection logic and will continuously attempt to reach the Server. Activity results are never lost due to a temporary Server crash.</p><p><strong>Scenario 2: Server crashes while scheduling the next Activity</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Timeline:
+</span></span><span class=line><span class=cl>  t0: ActivityA completes, Event written to DB
+</span></span><span class=line><span class=cl>  t1: Server prepares to schedule ActivityB
+</span></span><span class=line><span class=cl>  t2: Server crashes (ActivityB never placed in Task Queue)
+</span></span><span class=line><span class=cl>  t3: Server restarts
+</span></span><span class=line><span class=cl>  t4: History Service runs Transfer Task -&gt; discovers ActivityB needs scheduling
+</span></span><span class=line><span class=cl>  t5: ActivityB placed in Task Queue, Worker picks it up
+</span></span></code></pre></td></tr></table></div></div><p><strong>Key point</strong>: Temporal has a <strong>Transfer Queue</strong> mechanism. Persisted-but-undelivered tasks are re-scanned and dispatched by the Transfer Task Processor after Server restart.</p><p><strong>Scenario 3: Server crashes right when Workflow starts</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=nx>run</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>client</span><span class=p>.</span><span class=nf>ExecuteWorkflow</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>options</span><span class=p>,</span><span class=w> </span><span class=nx>MyWorkflow</span><span class=p>,</span><span class=w> </span><span class=nx>input</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Connection failed — but the Workflow might already be created!</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Use WorkflowID for idempotent lookup</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>existing</span><span class=p>,</span><span class=w> </span><span class=nx>_</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>client</span><span class=p>.</span><span class=nf>DescribeWorkflowExecution</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>workflowID</span><span class=p>,</span><span class=w> </span><span class=s>&#34;&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>existing</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>log</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=s>&#34;Workflow already running, no need to recreate&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Lesson learned</strong>: I once hit a bug where the client received a timeout error and retried Workflow creation, resulting in two records with the same WorkflowID. The fix was setting <code>WorkflowIdReusePolicy</code>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=nx>options</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>client</span><span class=p>.</span><span class=nx>StartWorkflowOptions</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ID</span><span class=p>:</span><span class=w>                    </span><span class=s>&#34;order-&#34;</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=nx>orderID</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>TaskQueue</span><span class=p>:</span><span class=w>             </span><span class=s>&#34;order-queue&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>WorkflowIDReusePolicy</span><span class=p>:</span><span class=w> </span><span class=nx>enums</span><span class=p>.</span><span class=nx>WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=23-timer-and-schedule-persistence>2.3 Timer and Schedule Persistence</h3><p>Temporal&rsquo;s Timers (<code>workflow.Sleep</code>) and Schedules are also persisted in the database:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// This sleep survives Server crashes</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>workflow</span><span class=p>.</span><span class=nf>Sleep</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=mi>24</span><span class=o>*</span><span class=nx>time</span><span class=p>.</span><span class=nx>Hour</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Resumes 24 hours later — even if Server restarted 10 times in between</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>How it works</strong>: <code>workflow.Sleep</code> generates a <code>TimerStarted</code> Event with the trigger time written to the database. After restart, the Timer module reloads all pending timers and fires <code>TimerFired</code> Events on schedule.</p><p>This is fundamentally different from <code>time.Sleep</code> — which is gone the moment the process exits.</p><h2 id=3-network-failures-triple-protection-for-activity-external-calls>3. Network Failures: Triple Protection for Activity External Calls</h2><h3 id=31-layer-1-retrypolicy-auto-retry>3.1 Layer 1: RetryPolicy Auto-Retry</h3><p>When an Activity&rsquo;s external service call fails (timeout, 503, connection refused), Temporal automatically retries per the RetryPolicy:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=nx>activityOptions</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nx>ActivityOptions</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>StartToCloseTimeout</span><span class=p>:</span><span class=w> </span><span class=mi>30</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nx>Second</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>RetryPolicy</span><span class=p>:</span><span class=w> </span><span class=o>&amp;</span><span class=nx>temporal</span><span class=p>.</span><span class=nx>RetryPolicy</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>InitialInterval</span><span class=p>:</span><span class=w>        </span><span class=nx>time</span><span class=p>.</span><span class=nx>Second</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>BackoffCoefficient</span><span class=p>:</span><span class=w>     </span><span class=mf>2.0</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>MaximumInterval</span><span class=p>:</span><span class=w>        </span><span class=nx>time</span><span class=p>.</span><span class=nx>Minute</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>MaximumAttempts</span><span class=p>:</span><span class=w>        </span><span class=mi>5</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>NonRetryableErrorTypes</span><span class=p>:</span><span class=w> </span><span class=p>[]</span><span class=kt>string</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=s>&#34;InvalidArgumentError&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=s>&#34;BusinessValidationError&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Retry timeline</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Attempt 1: t=0s    -&gt; Failed (timeout)
+</span></span><span class=line><span class=cl>Attempt 2: t=1s    -&gt; Failed (503)
+</span></span><span class=line><span class=cl>Attempt 3: t=3s    -&gt; Failed (connection refused)
+</span></span><span class=line><span class=cl>Attempt 4: t=7s    -&gt; Failed (timeout)
+</span></span><span class=line><span class=cl>Attempt 5: t=15s   -&gt; Success (service recovered)
+</span></span></code></pre></td></tr></table></div></div><h3 id=32-layer-2-heartbeat--lifeline-for-long-running-tasks>3.2 Layer 2: Heartbeat — Lifeline for Long-Running Tasks</h3><p>For Activities that may take a long time (e.g., batch API calls), timeouts alone aren&rsquo;t enough. Temporal provides a <strong>Heartbeat</strong> mechanism:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>BatchProcessActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>items</span><span class=w> </span><span class=p>[]</span><span class=nx>Item</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Recover progress from last heartbeat (resume from checkpoint)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>startIndex</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>activity</span><span class=p>.</span><span class=nf>HasHeartbeatDetails</span><span class=p>(</span><span class=nx>ctx</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>activity</span><span class=p>.</span><span class=nf>GetHeartbeatDetails</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>startIndex</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>startIndex</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>startIndex</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>items</span><span class=p>);</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>result</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>thirdPartyAPI</span><span class=p>.</span><span class=nf>Process</span><span class=p>(</span><span class=nx>items</span><span class=p>[</span><span class=nx>i</span><span class=p>])</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>activity</span><span class=p>.</span><span class=nf>RecordHeartbeat</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>i</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Heartbeat&rsquo;s two core capabilities</strong>:</p><ol><li><strong>Failure detection</strong>: If Worker crashes or network disconnects, Server marks Activity as failed after HeartbeatTimeout, triggering retry</li><li><strong>Progress recovery</strong>: Heartbeat details are available on retry, enabling checkpoint-resume</li></ol><h3 id=33-layer-3-activity-idempotency-design>3.3 Layer 3: Activity Idempotency Design</h3><p>Even with retries and heartbeats, there&rsquo;s an unavoidable issue: <strong>Activities may execute more than once.</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>ChargePayment</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=w> </span><span class=nx>Order</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>activityInfo</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>activity</span><span class=p>.</span><span class=nf>GetInfo</span><span class=p>(</span><span class=nx>ctx</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>idempotencyKey</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;charge-%s-%s-%d&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>activityInfo</span><span class=p>.</span><span class=nx>WorkflowExecution</span><span class=p>.</span><span class=nx>ID</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>activityInfo</span><span class=p>.</span><span class=nx>ActivityID</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>activityInfo</span><span class=p>.</span><span class=nx>Attempt</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>paymentClient</span><span class=p>.</span><span class=nf>ChargeWithIdempotencyKey</span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>order</span><span class=p>.</span><span class=nx>UserID</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>order</span><span class=p>.</span><span class=nx>Amount</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>idempotencyKey</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><table><thead><tr><th>Operation Type</th><th>Naturally Idempotent?</th><th>Strategy</th></tr></thead><tbody><tr><td>Query (GET)</td><td>Yes</td><td>No action needed</td></tr><tr><td>Create (POST)</td><td><strong>No</strong></td><td>Deduplicate via unique business ID</td></tr><tr><td>Update (PUT)</td><td>Depends</td><td>Optimistic locking / version numbers</td></tr><tr><td>Delete (DELETE)</td><td>Depends</td><td>Check-then-delete / ignore 404</td></tr><tr><td>Payment/Transfer</td><td><strong>Absolutely not</strong></td><td>Idempotency token required</td></tr></tbody></table><h2 id=4-rollback-failure-ultimate-fallback-for-compensation-chains>4. Rollback Failure: Ultimate Fallback for Compensation Chains</h2><h3 id=41-the-problem-compensation-itself-can-fail>4.1 The Problem: Compensation Itself Can Fail</h3><p>In the Saga pattern, when step N fails, you roll back N-1, N-2, &mldr;, 1. But what if the rollback itself fails?</p><h3 id=42-temporals-fallback-strategies>4.2 Temporal&rsquo;s Fallback Strategies</h3><p><strong>Strategy 1: Aggressive RetryPolicy for compensation Activities</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=nx>compensateCtx</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>WithActivityOptions</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nx>ActivityOptions</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>StartToCloseTimeout</span><span class=p>:</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nx>Minute</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>RetryPolicy</span><span class=p>:</span><span class=w> </span><span class=o>&amp;</span><span class=nx>temporal</span><span class=p>.</span><span class=nx>RetryPolicy</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>InitialInterval</span><span class=p>:</span><span class=w>    </span><span class=nx>time</span><span class=p>.</span><span class=nx>Second</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>BackoffCoefficient</span><span class=p>:</span><span class=w> </span><span class=mf>1.5</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>MaximumInterval</span><span class=p>:</span><span class=w>    </span><span class=mi>5</span><span class=w> </span><span class=o>*</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nx>Minute</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>MaximumAttempts</span><span class=p>:</span><span class=w>    </span><span class=mi>20</span><span class=p>,</span><span class=w>  </span><span class=c1>// Up to 20 retries for compensation</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>})</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Strategy 2: Freeze + Alert on compensation failure</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=k>if</span><span class=w> </span><span class=nx>compensateErr</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>_</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>MarkOrderForManualReview</span><span class=p>,</span><span class=w> </span><span class=nx>ManualReviewRequest</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>OrderID</span><span class=p>:</span><span class=w>       </span><span class=nx>order</span><span class=p>.</span><span class=nx>ID</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>FailedStep</span><span class=p>:</span><span class=w>    </span><span class=s>&#34;DeductInventory&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>CompensateErr</span><span class=p>:</span><span class=w> </span><span class=nx>compensateErr</span><span class=p>.</span><span class=nf>Error</span><span class=p>(),</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>NeedAction</span><span class=p>:</span><span class=w>    </span><span class=s>&#34;Manual refund required&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>_</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>SendAlert</span><span class=p>,</span><span class=w> </span><span class=nx>AlertMessage</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Level</span><span class=p>:</span><span class=w>   </span><span class=s>&#34;CRITICAL&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>Message</span><span class=p>:</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;Order %s compensation failed, manual intervention required&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>.</span><span class=nx>ID</span><span class=p>),</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=c1>// Don&#39;t return error — avoid Temporal retrying the entire Workflow</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Strategy 3: Leverage Workflow&rsquo;s infinite wait capability</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Wait indefinitely for human signal</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>var</span><span class=w> </span><span class=nx>resolution</span><span class=w> </span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>signalChan</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>GetSignalChannel</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=s>&#34;manual-resolution&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>signalChan</span><span class=p>.</span><span class=nf>Receive</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>resolution</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>switch</span><span class=w> </span><span class=nx>resolution</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>case</span><span class=w> </span><span class=s>&#34;retry&#34;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>compensateCtx</span><span class=p>,</span><span class=w> </span><span class=nx>RefundPayment</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>case</span><span class=w> </span><span class=s>&#34;skip&#34;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=c1>// Human handled it externally</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>case</span><span class=w> </span><span class=s>&#34;escalate&#34;</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;order %s escalated: %s&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>.</span><span class=nx>ID</span><span class=p>,</span><span class=w> </span><span class=nx>compensateErr</span><span class=p>.</span><span class=nf>Error</span><span class=p>())</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=43-generic-saga-compensation-framework>4.3 Generic Saga Compensation Framework</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>SagaStep</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Name</span><span class=w>       </span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Action</span><span class=w>     </span><span class=kd>interface</span><span class=p>{}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Compensate</span><span class=w> </span><span class=kd>interface</span><span class=p>{}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>Input</span><span class=w>      </span><span class=kd>interface</span><span class=p>{}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>ExecuteSaga</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>steps</span><span class=w> </span><span class=p>[]</span><span class=nx>SagaStep</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>completedSteps</span><span class=w> </span><span class=p>[]</span><span class=nx>SagaStep</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>step</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>steps</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>step</span><span class=p>.</span><span class=nx>Action</span><span class=p>,</span><span class=w> </span><span class=nx>step</span><span class=p>.</span><span class=nx>Input</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>completedSteps</span><span class=p>)</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>--</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>s</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>completedSteps</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=k>if</span><span class=w> </span><span class=nx>s</span><span class=p>.</span><span class=nx>Compensate</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                    </span><span class=nx>_</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>s</span><span class=p>.</span><span class=nx>Compensate</span><span class=p>,</span><span class=w> </span><span class=nx>s</span><span class=p>.</span><span class=nx>Input</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;step [%s] failed: %w&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>step</span><span class=p>.</span><span class=nx>Name</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>completedSteps</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>completedSteps</span><span class=p>,</span><span class=w> </span><span class=nx>step</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=5-reliability-layers-summary>5. Reliability Layers Summary</h2><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>┌──────────────────────────────────────────────┐
+</span></span><span class=line><span class=cl>│  Level 4: Human Fallback                     │
+</span></span><span class=line><span class=cl>│  Signal-based human intervention / Alerting  │
+</span></span><span class=line><span class=cl>├──────────────────────────────────────────────┤
+</span></span><span class=line><span class=cl>│  Level 3: Compensation Strategy              │
+</span></span><span class=line><span class=cl>│  Saga rollback / Aggressive retry / Freeze   │
+</span></span><span class=line><span class=cl>├──────────────────────────────────────────────┤
+</span></span><span class=line><span class=cl>│  Level 2: Activity Resilience                │
+</span></span><span class=line><span class=cl>│  RetryPolicy / Heartbeat / Idempotency Token │
+</span></span><span class=line><span class=cl>├──────────────────────────────────────────────┤
+</span></span><span class=line><span class=cl>│  Level 1: Persistence Foundation             │
+</span></span><span class=line><span class=cl>│  Event History / Write-Ahead / Transfer Queue│
+</span></span><span class=line><span class=cl>├──────────────────────────────────────────────┤
+</span></span><span class=line><span class=cl>│  Level 0: Storage Engine                     │
+</span></span><span class=line><span class=cl>│  MySQL / PostgreSQL ACID Guarantees          │
+</span></span><span class=line><span class=cl>└──────────────────────────────────────────────┘
+</span></span></code></pre></td></tr></table></div></div><table><thead><tr><th>Failure Type</th><th>Protection Level</th><th>Recovery Method</th></tr></thead><tbody><tr><td>Server temporary crash</td><td>Level 1</td><td>Event History replay + Transfer Queue re-dispatch</td></tr><tr><td>Worker crash</td><td>Level 2</td><td>HeartbeatTimeout detection + auto-reschedule to another Worker</td></tr><tr><td>Network jitter</td><td>Level 2</td><td>RetryPolicy exponential backoff</td></tr><tr><td>External service prolonged outage</td><td>Level 3</td><td>After retries exhausted, trigger compensation rollback</td></tr><tr><td>Compensation rollback failure</td><td>Level 4</td><td>Signal-based human intervention + alerting</td></tr><tr><td>Database crash</td><td>none</td><td>No automatic recovery; depends on database&rsquo;s own HA solution</td></tr></tbody></table><p><strong>Final takeaway</strong>:</p><p>Temporal&rsquo;s single-node reliability isn&rsquo;t built on a single &ldquo;silver bullet&rdquo; mechanism — it&rsquo;s a <strong>multi-layered defense</strong> stack. From database ACID at the bottom, to Event Sourcing write-ahead logging, Activity auto-retry + heartbeat, Saga compensation, and human signal fallback at the top, each layer covers the failure scenarios of the one below it.</p><p>But it has one hard dependency — <strong>the database cannot be lost</strong>. For single-node production deployments, at minimum you need database replication + regular backups. The Server and Worker are actually the least concerning parts — restart them and they pick up right where they left off, because all state lives in the database.</p><hr><blockquote><p><strong>Article Series</strong></p><ul><li>Previous: <a href=/posts/250715-temporal-vs-k8s-controller/ rel>Temporal vs K8s Controller: Two Control Plane Paradigms</a></li><li>Previous: <a href=/posts/250710-temporal-saga/ rel>Temporal in Practice: From Saga Pattern to Self-Healing</a></li></ul></blockquote></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2026-02-13</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/260213-temporal-reliability/ data-title="Temporal Single-Node Reliability Deep Dive: How It Survives Server Crashes, Network Failures, and Rollback Errors" data-hashtags=Temporal,Go,Reliability><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/260213-temporal-reliability/ data-hashtag=Temporal><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/260213-temporal-reliability/ data-title="Temporal Single-Node Reliability Deep Dive: How It Survives Server Crashes, Network Failures, and Rollback Errors"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/260213-temporal-reliability/ data-title="Temporal Single-Node Reliability Deep Dive: How It Survives Server Crashes, Network Failures, and Rollback Errors"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/260213-temporal-reliability/ data-title="Temporal Single-Node Reliability Deep Dive: How It Survives Server Crashes, Network Failures, and Rollback Errors"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/temporal/>Temporal</a>,&nbsp;<a href=/tags/go/>Go</a>,&nbsp;<a href=/tags/reliability/>Reliability</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/251210-dive-into-k8s-02/ class=prev rel=prev title="Dive into K8s 02: Cilium Replaces Flannel — Goodbye VXLAN Tax, Hello eBPF Native Networking"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Dive into K8s 02: Cilium Replaces Flannel — Goodbye VXLAN Tax, Hello eBPF Native Networking</a>
+<a href=/posts/260216-hnsw-implementation/ class=next rel=next title="Six Pitfalls Implementing HNSW: A Debug Journal from 0% to 98%+ Recall">Six Pitfalls Implementing HNSW: A Debug Journal from 0% to 98%+ Recall<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

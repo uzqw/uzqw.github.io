@@ -1,0 +1,384 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs - zqw's notes</title><meta name=Description content="Personal tech blog about Go, Linux, and backend development"><meta property="og:url" content="https://uzqw.github.io/posts/210703-lru-learning/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs"><meta property="og:description" content="Textbook LRU uses a doubly-linked list + HashMap. But why does Redis use “approximate LRU”? This post dives into Redis source code to analyze the engineering trade-offs behind different eviction strategies."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-07-03T12:00:00+08:00"><meta property="article:modified_time" content="2022-03-17T12:00:00+08:00"><meta property="article:tag" content="Redis"><meta property="article:tag" content="Caching"><meta property="article:tag" content="Source Code Analysis"><meta name=twitter:card content="summary"><meta name=twitter:title content="Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs"><meta name=twitter:description content="Textbook LRU uses a doubly-linked list + HashMap. But why does Redis use “approximate LRU”? This post dives into Redis source code to analyze the engineering trade-offs behind different eviction strategies."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/210703-lru-learning/><link rel=prev href=https://uzqw.github.io/posts/210520-linux-boot-process/><link rel=next href=https://uzqw.github.io/posts/210810-fuse-filesystem/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/210703-lru-learning\/"},"genre":"posts","keywords":"Redis, Caching, Source Code Analysis","wordcount":1288,"url":"https:\/\/uzqw.github.io\/posts\/210703-lru-learning\/","datePublished":"2021-07-03T12:00:00+08:00","dateModified":"2022-03-17T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":""}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/210703-lru-learning/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/210703-lru-learning/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/210703-lru-learning/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/210703-lru-learning/ selected>English</option><option value=https://uzqw.net/posts/210703-lru-learning/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/210703-lru-learning/ selected>English</option><option value=https://uzqw.net/posts/210703-lru-learning/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/performance/><i class="far fa-folder fa-fw" aria-hidden=true></i>Performance</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2021-07-03>2021-07-03</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1288 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;7 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-redis-memory-eviction-strategies>1. Redis Memory Eviction Strategies</a><ul><li><a href=#11-configuration-options>1.1 Configuration Options</a></li><li><a href=#12-why-not-use-exact-lru>1.2 Why Not Use Exact LRU?</a></li></ul></li><li><a href=#2-redis-approximate-lru-implementation>2. Redis Approximate LRU Implementation</a><ul><li><a href=#21-core-idea>2.1 Core Idea</a></li><li><a href=#22-source-code-analysis>2.2 Source Code Analysis</a></li><li><a href=#23-timestamp-storage>2.3 Timestamp Storage</a></li><li><a href=#24-impact-of-sample-size>2.4 Impact of Sample Size</a></li></ul></li><li><a href=#3-lfu-frequency-based-eviction>3. LFU: Frequency-Based Eviction</a><ul><li><a href=#31-the-problem-with-lru>3.1 The Problem with LRU</a></li><li><a href=#32-redis-lfu-implementation>3.2 Redis LFU Implementation</a></li><li><a href=#33-lfu-configuration>3.3 LFU Configuration</a></li></ul></li><li><a href=#4-benchmark-comparison>4. Benchmark Comparison</a><ul><li><a href=#41-test-method>4.1 Test Method</a></li><li><a href=#42-results>4.2 Results</a></li></ul></li><li><a href=#5-source-level-optimization-details>5. Source-Level Optimization Details</a><ul><li><a href=#51-lazy-deletion-vs-periodic-deletion>5.1 Lazy Deletion vs Periodic Deletion</a></li><li><a href=#52-memory-reclaim-strategy>5.2 Memory Reclaim Strategy</a></li></ul></li><li><a href=#6-best-practices>6. Best Practices</a><ul><li><a href=#61-choosing-a-policy>6.1 Choosing a Policy</a></li><li><a href=#62-monitoring>6.2 Monitoring</a></li><li><a href=#63-preventing-mass-evictions>6.3 Preventing Mass Evictions</a></li></ul></li><li><a href=#7-summary>7. Summary</a></li></ul></nav></div></div><div class=content id=content><p>Textbook LRU uses a doubly-linked list + HashMap. But why does Redis use &ldquo;approximate LRU&rdquo;? This post dives into Redis source code to analyze the engineering trade-offs behind different eviction strategies.</p><h2 id=1-redis-memory-eviction-strategies>1. Redis Memory Eviction Strategies</h2><h3 id=11-configuration-options>1.1 Configuration Options</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># redis.conf</span>
+</span></span><span class=line><span class=cl>maxmemory 1gb
+</span></span><span class=line><span class=cl>maxmemory-policy allkeys-lru
+</span></span></code></pre></td></tr></table></div></div><p>Available policies:</p><table><thead><tr><th>Policy</th><th>Scope</th><th>Algorithm</th></tr></thead><tbody><tr><td>noeviction</td><td>-</td><td>Reject writes</td></tr><tr><td>allkeys-lru</td><td>All keys</td><td>Approximate LRU</td></tr><tr><td>volatile-lru</td><td>Keys with TTL</td><td>Approximate LRU</td></tr><tr><td>allkeys-lfu</td><td>All keys</td><td>Approximate LFU</td></tr><tr><td>volatile-lfu</td><td>Keys with TTL</td><td>Approximate LFU</td></tr><tr><td>allkeys-random</td><td>All keys</td><td>Random</td></tr><tr><td>volatile-random</td><td>Keys with TTL</td><td>Random</td></tr><tr><td>volatile-ttl</td><td>Keys with TTL</td><td>Evict by TTL</td></tr></tbody></table><h3 id=12-why-not-use-exact-lru>1.2 Why Not Use Exact LRU?</h3><p><strong>Textbook LRU</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>LRUCache</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>capacity</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>cache</span><span class=w>    </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=o>*</span><span class=nx>Node</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>head</span><span class=w>     </span><span class=o>*</span><span class=nx>Node</span><span class=w>  </span><span class=c1>// Most recently used</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>tail</span><span class=w>     </span><span class=o>*</span><span class=nx>Node</span><span class=w>  </span><span class=c1>// Least recently used</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// On every access, move node to head</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// On eviction, delete tail node</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>The problems</strong>:</p><ol><li><strong>Memory overhead</strong>: Each key needs 2 extra pointers (prev/next), 64-bit system = 16 bytes/key</li><li><strong>Concurrency overhead</strong>: Every read mutates the list, requiring locks</li><li><strong>CPU cache unfriendly</strong>: Linked list nodes aren&rsquo;t contiguous in memory</li></ol><p>Redis can have millions or even billions of keys. These overheads are unacceptable.</p><h2 id=2-redis-approximate-lru-implementation>2. Redis Approximate LRU Implementation</h2><h3 id=21-core-idea>2.1 Core Idea</h3><p>Redis&rsquo;s approach:</p><ol><li><strong>No global linked list</strong></li><li><strong>Each key stores last access timestamp</strong> (24 bits = 3 bytes)</li><li><strong>On eviction, randomly sample keys and evict the oldest</strong></li></ol><h3 id=22-source-code-analysis>2.2 Source Code Analysis</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// src/evict.c
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>int</span> <span class=nf>freeMemoryIfNeeded</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// Called when memory exceeds limit
+</span></span></span><span class=line><span class=cl><span class=c1></span>    
+</span></span><span class=line><span class=cl>    <span class=k>while</span> <span class=p>(</span><span class=n>mem_used</span> <span class=o>&gt;</span> <span class=n>maxmemory</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Sample N keys
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=k>struct</span> <span class=n>evictionPoolEntry</span> <span class=n>pool</span><span class=p>[</span><span class=n>EVPOOL_SIZE</span><span class=p>];</span>
+</span></span><span class=line><span class=cl>        
+</span></span><span class=line><span class=cl>        <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>server</span><span class=p>.</span><span class=n>maxmemory_samples</span><span class=p>;</span> <span class=n>i</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=c1>// Randomly pick a key
+</span></span></span><span class=line><span class=cl><span class=c1></span>            <span class=n>dictEntry</span> <span class=o>*</span><span class=n>de</span> <span class=o>=</span> <span class=nf>dictGetRandomKey</span><span class=p>(</span><span class=n>dict</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>            
+</span></span><span class=line><span class=cl>            <span class=c1>// Get access time
+</span></span></span><span class=line><span class=cl><span class=c1></span>            <span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>idle</span> <span class=o>=</span> <span class=nf>estimateObjectIdleTime</span><span class=p>(</span><span class=n>o</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>            
+</span></span><span class=line><span class=cl>            <span class=c1>// Add to sorted pool
+</span></span></span><span class=line><span class=cl><span class=c1></span>            <span class=nf>evictionPoolPopulate</span><span class=p>(</span><span class=n>pool</span><span class=p>,</span> <span class=n>de</span><span class=p>,</span> <span class=n>idle</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>        
+</span></span><span class=line><span class=cl>        <span class=c1>// Evict the oldest in pool
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=n>bestkey</span> <span class=o>=</span> <span class=n>pool</span><span class=p>[</span><span class=mi>0</span><span class=p>].</span><span class=n>key</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=nf>deleteKey</span><span class=p>(</span><span class=n>bestkey</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=23-timestamp-storage>2.3 Timestamp Storage</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// src/object.c
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=k>typedef</span> <span class=k>struct</span> <span class=n>redisObject</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kt>unsigned</span> <span class=nl>type</span><span class=p>:</span><span class=mi>4</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kt>unsigned</span> <span class=nl>encoding</span><span class=p>:</span><span class=mi>4</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kt>unsigned</span> <span class=nl>lru</span><span class=p>:</span><span class=n>LRU_BITS</span><span class=p>;</span>  <span class=c1>// 24 bits
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kt>int</span> <span class=n>refcount</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kt>void</span> <span class=o>*</span><span class=n>ptr</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span> <span class=n>robj</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// Update access time
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>void</span> <span class=nf>touchObject</span><span class=p>(</span><span class=n>robj</span> <span class=o>*</span><span class=n>o</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>o</span><span class=o>-&gt;</span><span class=n>lru</span> <span class=o>=</span> <span class=nf>LRU_CLOCK</span><span class=p>();</span>  <span class=c1>// Lower 24 bits of current time
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// Estimate idle time
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>unsigned</span> <span class=kt>long</span> <span class=nf>estimateObjectIdleTime</span><span class=p>(</span><span class=n>robj</span> <span class=o>*</span><span class=n>o</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>lruclock</span> <span class=o>=</span> <span class=nf>LRU_CLOCK</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>lruclock</span> <span class=o>&gt;=</span> <span class=n>o</span><span class=o>-&gt;</span><span class=n>lru</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=n>lruclock</span> <span class=o>-</span> <span class=n>o</span><span class=o>-&gt;</span><span class=n>lru</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Clock wraparound
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=k>return</span> <span class=p>(</span><span class=n>lruclock</span> <span class=o>+</span> <span class=p>(</span><span class=mi>1</span> <span class=o>&lt;&lt;</span> <span class=n>LRU_BITS</span><span class=p>))</span> <span class=o>-</span> <span class=n>o</span><span class=o>-&gt;</span><span class=n>lru</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Precision</strong>: 24 bits representing seconds wraps around every ~194 days. Good enough.</p><h3 id=24-impact-of-sample-size>2.4 Impact of Sample Size</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Default: sample 5 keys</span>
+</span></span><span class=line><span class=cl>maxmemory-samples <span class=m>5</span>
+</span></span></code></pre></td></tr></table></div></div><table><thead><tr><th>Samples</th><th>Hit Rate</th><th>CPU Overhead</th></tr></thead><tbody><tr><td>1</td><td>~80%</td><td>Very low</td></tr><tr><td>5</td><td>~93%</td><td>Low</td></tr><tr><td>10</td><td>~97%</td><td>Medium</td></tr><tr><td>Full scan</td><td>100%</td><td>Unacceptable</td></tr></tbody></table><p><strong>Engineering trade-off</strong>: Sampling 5-10 keys gets you close enough to exact LRU.</p><h2 id=3-lfu-frequency-based-eviction>3. LFU: Frequency-Based Eviction</h2><h3 id=31-the-problem-with-lru>3.1 The Problem with LRU</h3><p>Assume cache capacity of 3:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Access sequence: A A A A B B C D E
+</span></span><span class=line><span class=cl>LRU state:
+</span></span><span class=line><span class=cl>  [A]
+</span></span><span class=line><span class=cl>  [A] (accessed A 4 times)
+</span></span><span class=line><span class=cl>  [B, A]
+</span></span><span class=line><span class=cl>  [B, A] (accessed B 2 times)
+</span></span><span class=line><span class=cl>  [C, B, A]
+</span></span><span class=line><span class=cl>  [D, C, B]  ← A gets evicted!
+</span></span><span class=line><span class=cl>  [E, D, C]
+</span></span></code></pre></td></tr></table></div></div><p>A was accessed 4 times but got evicted just because it wasn&rsquo;t accessed &ldquo;recently&rdquo;. That&rsquo;s not ideal for many use cases.</p><h3 id=32-redis-lfu-implementation>3.2 Redis LFU Implementation</h3><p>Redis 4.0 introduced LFU, reusing the same 24-bit <code>lru</code> field:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>+--------+--------+
+</span></span><span class=line><span class=cl>| 16 bits | 8 bits |
+</span></span><span class=line><span class=cl>| timestamp | counter |
+</span></span><span class=line><span class=cl>+--------+--------+
+</span></span></code></pre></td></tr></table></div></div><p><strong>Counter decay</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// On each access
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>unsigned</span> <span class=kt>long</span> <span class=nf>LFUDecrAndReturn</span><span class=p>(</span><span class=n>robj</span> <span class=o>*</span><span class=n>o</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// Get last access time
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>ldt</span> <span class=o>=</span> <span class=n>o</span><span class=o>-&gt;</span><span class=n>lru</span> <span class=o>&gt;&gt;</span> <span class=mi>8</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>counter</span> <span class=o>=</span> <span class=n>o</span><span class=o>-&gt;</span><span class=n>lru</span> <span class=o>&amp;</span> <span class=mi>255</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1>// Calculate time elapsed (in minutes)
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>minutes</span> <span class=o>=</span> <span class=nf>LFUTimeElapsed</span><span class=p>(</span><span class=n>ldt</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=c1>// Decay every N minutes
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=k>if</span> <span class=p>(</span><span class=n>minutes</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>decay</span> <span class=o>=</span> <span class=n>minutes</span> <span class=o>/</span> <span class=n>lfu_decay_time</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=p>(</span><span class=n>counter</span> <span class=o>&gt;</span> <span class=n>decay</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=n>counter</span> <span class=o>-=</span> <span class=n>decay</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=n>counter</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>counter</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Probabilistic counter increment</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// Don&#39;t increment on every access, use probability
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>unsigned</span> <span class=kt>long</span> <span class=nf>LFULogIncr</span><span class=p>(</span><span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>counter</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>counter</span> <span class=o>==</span> <span class=mi>255</span><span class=p>)</span> <span class=k>return</span> <span class=mi>255</span><span class=p>;</span>  <span class=c1>// Max cap
+</span></span></span><span class=line><span class=cl><span class=c1></span>    
+</span></span><span class=line><span class=cl>    <span class=kt>double</span> <span class=n>r</span> <span class=o>=</span> <span class=p>(</span><span class=kt>double</span><span class=p>)</span><span class=nf>rand</span><span class=p>()</span> <span class=o>/</span> <span class=n>RAND_MAX</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kt>double</span> <span class=n>p</span> <span class=o>=</span> <span class=mf>1.0</span> <span class=o>/</span> <span class=p>((</span><span class=n>counter</span> <span class=o>-</span> <span class=n>LFU_INIT_VAL</span><span class=p>)</span> <span class=o>*</span> <span class=n>lfu_log_factor</span> <span class=o>+</span> <span class=mi>1</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>r</span> <span class=o>&lt;</span> <span class=n>p</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=n>counter</span><span class=o>++</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>counter</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Why probabilistic increment?</strong></p><ul><li>Counter is only 8 bits, max 255</li><li>Hot keys might be accessed millions of times</li><li>Probabilistic increment implements &ldquo;logarithmic counting&rdquo; — counter=10 roughly equals 1000 accesses</li></ul><h3 id=33-lfu-configuration>3.3 LFU Configuration</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Decay time (minutes)</span>
+</span></span><span class=line><span class=cl>lfu-decay-time <span class=m>1</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Logarithm factor</span>
+</span></span><span class=line><span class=cl>lfu-log-factor <span class=m>10</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=4-benchmark-comparison>4. Benchmark Comparison</h2><h3 id=41-test-method>4.1 Test Method</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>benchmark</span><span class=p>(</span><span class=nx>policy</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>client</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>redis</span><span class=p>.</span><span class=nf>NewClient</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>redis</span><span class=p>.</span><span class=nx>Options</span><span class=p>{</span><span class=o>...</span><span class=p>})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Warmup: write 1 million keys</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>1_000_000</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>client</span><span class=p>.</span><span class=nf>Set</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;key:%d&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>i</span><span class=p>),</span><span class=w> </span><span class=s>&#34;value&#34;</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Simulate real access (Zipf distribution: few keys accessed frequently)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>zipf</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>rand</span><span class=p>.</span><span class=nf>NewZipf</span><span class=p>(</span><span class=nx>rand</span><span class=p>.</span><span class=nf>NewSource</span><span class=p>(</span><span class=mi>42</span><span class=p>),</span><span class=w> </span><span class=mf>1.1</span><span class=p>,</span><span class=w> </span><span class=mi>10</span><span class=p>,</span><span class=w> </span><span class=mi>1_000_000</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>hits</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>1_000_000</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>key</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;key:%d&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>zipf</span><span class=p>.</span><span class=nf>Uint64</span><span class=p>())</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>client</span><span class=p>.</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>key</span><span class=p>).</span><span class=nf>Err</span><span class=p>()</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>hits</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;%s: hit rate = %.2f%%\n&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>policy</span><span class=p>,</span><span class=w> </span><span class=nb>float64</span><span class=p>(</span><span class=nx>hits</span><span class=p>)</span><span class=o>/</span><span class=mi>10000</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=42-results>4.2 Results</h3><table><thead><tr><th>Policy</th><th>Uniform Access</th><th>Zipf Distribution</th><th>Burst Hotspots</th></tr></thead><tbody><tr><td>allkeys-random</td><td>50%</td><td>52%</td><td>51%</td></tr><tr><td>allkeys-lru</td><td>65%</td><td>78%</td><td>60%</td></tr><tr><td>allkeys-lfu</td><td>62%</td><td>85%</td><td>82%</td></tr></tbody></table><p><strong>Conclusions</strong>:</p><ul><li>Uniform access → LRU slightly better</li><li>Hot data → LFU significantly better</li><li>Burst hotspots → LFU protects existing hot keys</li></ul><h2 id=5-source-level-optimization-details>5. Source-Level Optimization Details</h2><h3 id=51-lazy-deletion-vs-periodic-deletion>5.1 Lazy Deletion vs Periodic Deletion</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// Lazy deletion: check on access
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=n>robj</span> <span class=o>*</span><span class=nf>lookupKeyRead</span><span class=p>(</span><span class=n>redisDb</span> <span class=o>*</span><span class=n>db</span><span class=p>,</span> <span class=n>robj</span> <span class=o>*</span><span class=n>key</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nf>expireIfNeeded</span><span class=p>(</span><span class=n>db</span><span class=p>,</span> <span class=n>key</span><span class=p>);</span>  <span class=c1>// Check expiration first
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=k>return</span> <span class=nf>lookupKey</span><span class=p>(</span><span class=n>db</span><span class=p>,</span> <span class=n>key</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// Periodic deletion: background timer task
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>void</span> <span class=nf>activeExpireCycle</span><span class=p>(</span><span class=kt>int</span> <span class=n>type</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>j</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>j</span> <span class=o>&lt;</span> <span class=n>dbs</span><span class=p>;</span> <span class=n>j</span><span class=o>++</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Sample 20 keys randomly each time
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=c1>// Delete expired ones
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=c1>// If &gt;25% expired, continue loop
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=52-memory-reclaim-strategy>5.2 Memory Reclaim Strategy</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=c1>// Don&#39;t free immediately, free asynchronously
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kt>void</span> <span class=nf>freeObjAsync</span><span class=p>(</span><span class=n>robj</span> <span class=o>*</span><span class=n>o</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kt>size_t</span> <span class=n>size</span> <span class=o>=</span> <span class=nf>objectComputeSize</span><span class=p>(</span><span class=n>o</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>size</span> <span class=o>&gt;</span> <span class=n>LAZYFREE_THRESHOLD</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Large object: queue for background deletion
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>bioCreateLazyFreeJob</span><span class=p>(</span><span class=n>lazyfreeFreeObject</span><span class=p>,</span> <span class=mi>1</span><span class=p>,</span> <span class=n>o</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// Small object: delete immediately
+</span></span></span><span class=line><span class=cl><span class=c1></span>        <span class=nf>decrRefCount</span><span class=p>(</span><span class=n>o</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=6-best-practices>6. Best Practices</h2><h3 id=61-choosing-a-policy>6.1 Choosing a Policy</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>if</span> <span class=n>access_pattern</span> <span class=o>==</span> <span class=s2>&#34;uniform&#34;</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=n>use</span> <span class=s2>&#34;allkeys-lru&#34;</span>
+</span></span><span class=line><span class=cl><span class=k>elif</span> <span class=n>access_pattern</span> <span class=o>==</span> <span class=s2>&#34;hot_data&#34;</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=n>use</span> <span class=s2>&#34;allkeys-lfu&#34;</span>
+</span></span><span class=line><span class=cl><span class=k>elif</span> <span class=n>data_has_explicit_ttl</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=n>use</span> <span class=s2>&#34;volatile-ttl&#34;</span>
+</span></span><span class=line><span class=cl><span class=k>else</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=n>use</span> <span class=s2>&#34;allkeys-lru&#34;</span>  <span class=c1># Safe default</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=62-monitoring>6.2 Monitoring</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Check eviction stats</span>
+</span></span><span class=line><span class=cl>redis-cli info stats <span class=p>|</span> grep evicted
+</span></span><span class=line><span class=cl><span class=c1># evicted_keys:12345</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Check memory usage</span>
+</span></span><span class=line><span class=cl>redis-cli info memory
+</span></span><span class=line><span class=cl><span class=c1># used_memory:1073741824</span>
+</span></span><span class=line><span class=cl><span class=c1># maxmemory:2147483648</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=63-preventing-mass-evictions>6.3 Preventing Mass Evictions</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Leave 10-20% headroom when setting maxmemory</span>
+</span></span><span class=line><span class=cl>maxmemory 1.8gb  <span class=c1># If machine has 2gb</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Alert monitoring</span>
+</span></span><span class=line><span class=cl><span class=k>if</span> memory_usage &gt; 80%:
+</span></span><span class=line><span class=cl>    alert<span class=o>()</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=7-summary>7. Summary</h2><table><thead><tr><th>Concept</th><th>Redis Implementation</th><th>Rationale</th></tr></thead><tbody><tr><td>LRU</td><td>Approximate LRU (sampling)</td><td>Avoid linked list overhead</td></tr><tr><td>Timestamp</td><td>24 bits storage</td><td>Save memory</td></tr><tr><td>LFU counter</td><td>8 bits + probabilistic increment</td><td>Logarithmic compression</td></tr><tr><td>Deletion</td><td>Lazy + periodic</td><td>Balance latency and memory</td></tr></tbody></table><p><strong>Key takeaways</strong>:</p><ol><li>Production systems often trade exact algorithms for approximate ones to gain efficiency</li><li>Sampling is good enough to approximate optimal results</li><li>Memory optimization is everywhere (24 bits instead of 64 bits)</li><li>LFU works better when you have clear hot-spot patterns</li></ol></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2022-03-17</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/210703-lru-learning/ data-title="Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs" data-hashtags="Redis,Caching,Source Code Analysis"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/210703-lru-learning/ data-hashtag=Redis><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/210703-lru-learning/ data-title="Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/210703-lru-learning/ data-title="Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/210703-lru-learning/ data-title="Redis Eviction Deep Dive: LRU vs LFU vs TTL Engineering Trade-offs"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/redis/>Redis</a>,&nbsp;<a href=/tags/caching/>Caching</a>,&nbsp;<a href=/tags/source-code-analysis/>Source Code Analysis</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/210520-linux-boot-process/ class=prev rel=prev title="Linux Boot Process: Complete Guide from Power Button to Login"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Linux Boot Process: Complete Guide from Power Button to Login</a>
+<a href=/posts/210810-fuse-filesystem/ class=next rel=next title="Building a Mini Filesystem: Custom FS with FUSE + Go">Building a Mini Filesystem: Custom FS with FUSE + Go<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

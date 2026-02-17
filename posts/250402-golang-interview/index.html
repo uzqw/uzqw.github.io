@@ -1,0 +1,344 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning - zqw's notes</title><meta name=Description content="Documenting a performance investigation caused by sync.Mutex contention, deep-diving into Go lock implementation, and when to consider spinlocks."><meta property="og:url" content="https://uzqw.github.io/posts/250402-golang-interview/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning"><meta property="og:description" content="Documenting a performance investigation caused by sync.Mutex contention, deep-diving into Go lock implementation, and when to consider spinlocks."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2025-04-02T18:37:00+08:00"><meta property="article:modified_time" content="2025-04-02T18:37:00+08:00"><meta property="article:tag" content="Concurrency"><meta property="article:tag" content="Locks"><meta property="article:tag" content="Performance"><meta name=twitter:card content="summary"><meta name=twitter:title content="Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning"><meta name=twitter:description content="Documenting a performance investigation caused by sync.Mutex contention, deep-diving into Go lock implementation, and when to consider spinlocks."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/250402-golang-interview/><link rel=prev href=https://uzqw.github.io/posts/230615-linux-boot-optimization/><link rel=next href=https://uzqw.github.io/posts/250710-temporal-saga/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/250402-golang-interview\/"},"genre":"posts","keywords":"Concurrency, Locks, Performance","wordcount":1191,"url":"https:\/\/uzqw.github.io\/posts\/250402-golang-interview\/","datePublished":"2025-04-02T18:37:00+08:00","dateModified":"2025-04-02T18:37:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"Documenting a performance investigation caused by sync.Mutex contention, deep-diving into Go lock implementation, and when to consider spinlocks."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/250402-golang-interview/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/250402-golang-interview/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/250402-golang-interview/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/250402-golang-interview/ selected>English</option><option value=https://uzqw.net/posts/250402-golang-interview/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/250402-golang-interview/ selected>English</option><option value=https://uzqw.net/posts/250402-golang-interview/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/go/><i class="far fa-folder fa-fw" aria-hidden=true></i>Go</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2025-04-02>2025-04-02</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1191 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;6 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-the-problem>1. The Problem</a><ul><li><a href=#try-it-yourself>Try It Yourself</a></li><li><a href=#11-background>1.1 Background</a></li><li><a href=#12-pprof-analysis>1.2 pprof Analysis</a></li></ul></li><li><a href=#2-deep-dive-into-syncmutex>2. Deep Dive into sync.Mutex</a><ul><li><a href=#21-gos-hybrid-lock-strategy>2.1 Go&rsquo;s Hybrid Lock Strategy</a></li><li><a href=#22-spin-conditions>2.2 Spin Conditions</a></li><li><a href=#23-when-rwmutex-helps-and-when-it-doesnt>2.3 When RWMutex Helps (and When It Doesn&rsquo;t)</a></li></ul></li><li><a href=#3-solution-comparison>3. Solution Comparison</a><ul><li><a href=#31-option-1-sharded-locks>3.1 Option 1: Sharded Locks</a></li><li><a href=#32-option-2-syncmap>3.2 Option 2: sync.Map</a></li><li><a href=#33-option-3-spinlock--minimal-critical-section>3.3 Option 3: Spinlock + Minimal Critical Section</a></li><li><a href=#34-option-4-copy-on-write>3.4 Option 4: Copy-on-Write</a></li></ul></li><li><a href=#4-performance-summary>4. Performance Summary</a></li><li><a href=#5-final-solution>5. Final Solution</a></li><li><a href=#6-debugging-toolchain>6. Debugging Toolchain</a></li><li><a href=#7-summary>7. Summary</a></li></ul></nav></div></div><div class=content id=content><p>A seemingly simple concurrent Map access, performance crashes under high concurrency. pprof shows 90% of time spent in <code>sync.Mutex.Lock</code>. This post documents the investigation and performance comparison of different lock strategies.</p><h2 id=1-the-problem>1. The Problem</h2><h3 id=try-it-yourself>Try It Yourself</h3><p>Want to run the benchmarks locally? Clone the repo and give it a try:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>git clone https://github.com/uzqw/uzqw-blog-labs.git
+</span></span><span class=line><span class=cl><span class=nb>cd</span> uzqw-blog-labs/250402-golang-interview
+</span></span><span class=line><span class=cl>make bench
+</span></span></code></pre></td></tr></table></div></div><h3 id=11-background>1.1 Background</h3><p>In the NAS system&rsquo;s disk status cache module, we use a global Map to store disk health info:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>DiskCache</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>mu</span><span class=w>    </span><span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>disks</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=o>*</span><span class=nx>DiskStatus</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>DiskCache</span><span class=p>)</span><span class=w> </span><span class=nf>Get</span><span class=p>(</span><span class=nx>id</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=o>*</span><span class=nx>DiskStatus</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>RLock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>RUnlock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>disks</span><span class=p>[</span><span class=nx>id</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>DiskCache</span><span class=p>)</span><span class=w> </span><span class=nf>Update</span><span class=p>(</span><span class=nx>id</span><span class=w> </span><span class=kt>string</span><span class=p>,</span><span class=w> </span><span class=nx>status</span><span class=w> </span><span class=o>*</span><span class=nx>DiskStatus</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>c</span><span class=p>.</span><span class=nx>disks</span><span class=p>[</span><span class=nx>id</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>status</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p>Looks standard, but on a 32-core machine, when concurrent read requests hit 100K QPS, response time shot from 0.1ms to 50ms.</p><h3 id=12-pprof-analysis>1.2 pprof Analysis</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>go tool pprof http://localhost:6060/debug/pprof/profile?seconds<span class=o>=</span><span class=m>30</span>
+</span></span></code></pre></td></tr></table></div></div><p>Flame graph shows:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>runtime.lock2 (45%)
+</span></span><span class=line><span class=cl>  └── sync.(*RWMutex).RLock
+</span></span><span class=line><span class=cl>runtime.unlock2 (42%)
+</span></span><span class=line><span class=cl>  └── sync.(*RWMutex).RUnlock
+</span></span></code></pre></td></tr></table></div></div><p><strong>87% of CPU time spent on lock contention!</strong></p><h2 id=2-deep-dive-into-syncmutex>2. Deep Dive into sync.Mutex</h2><h3 id=21-gos-hybrid-lock-strategy>2.1 Go&rsquo;s Hybrid Lock Strategy</h3><p>Go&rsquo;s <code>sync.Mutex</code> isn&rsquo;t pure spinlock nor pure blocking lock — it&rsquo;s <strong>hybrid</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// src/sync/mutex.go (simplified)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>m</span><span class=w> </span><span class=o>*</span><span class=nx>Mutex</span><span class=p>)</span><span class=w> </span><span class=nf>Lock</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Fast path: try to acquire directly</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>atomic</span><span class=p>.</span><span class=nf>CompareAndSwapInt32</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>m</span><span class=p>.</span><span class=nx>state</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=nx>mutexLocked</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>m</span><span class=p>.</span><span class=nf>lockSlow</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>m</span><span class=w> </span><span class=o>*</span><span class=nx>Mutex</span><span class=p>)</span><span class=w> </span><span class=nf>lockSlow</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>waitStartTime</span><span class=w> </span><span class=kt>int64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>starving</span><span class=w> </span><span class=kt>bool</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>awoke</span><span class=w> </span><span class=kt>bool</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>iter</span><span class=w> </span><span class=kt>int</span><span class=w>  </span><span class=c1>// Spin count</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Spin phase: brief spin wait</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nf>canSpin</span><span class=p>(</span><span class=nx>iter</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>if</span><span class=w> </span><span class=p>!</span><span class=nx>awoke</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> </span><span class=nx>atomic</span><span class=p>.</span><span class=nf>CompareAndSwapInt32</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>m</span><span class=p>.</span><span class=nx>state</span><span class=p>,</span><span class=w> </span><span class=nx>old</span><span class=p>,</span><span class=w> </span><span class=nx>old</span><span class=p>|</span><span class=nx>mutexWoken</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>awoke</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=kc>true</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nf>runtime_doSpin</span><span class=p>()</span><span class=w>  </span><span class=c1>// Execute PAUSE instruction</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>iter</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>continue</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Block phase: spin failed, go to sleep</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nf>runtime_SemacquireMutex</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>m</span><span class=p>.</span><span class=nx>sema</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=22-spin-conditions>2.2 Spin Conditions</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>canSpin</span><span class=p>(</span><span class=nx>iter</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// 1. Multi-core CPU (single-core spin is pointless)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// 2. GOMAXPROCS &gt; 1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// 3. Spin count &lt; 4</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// 4. At least one P is running</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>iter</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>active_spin</span><span class=w> </span><span class=o>&amp;&amp;</span><span class=w> 
+</span></span></span><span class=line><span class=cl><span class=w>           </span><span class=nf>runtime_canSpin</span><span class=p>(</span><span class=nx>iter</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p>Go only spins <strong>4 times</strong>, about 30 CPU cycles each. If still can&rsquo;t get lock, enters block queue.</p><h3 id=23-when-rwmutex-helps-and-when-it-doesnt>2.3 When RWMutex Helps (and When It Doesn&rsquo;t)</h3><p>For read-heavy workloads, RWMutex can outperform Mutex:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Read-heavy benchmark (24 cores)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>BenchmarkMutexRead</span><span class=o>-</span><span class=mi>24</span><span class=w>       </span><span class=mi>24505413</span><span class=w>    </span><span class=mf>142.1</span><span class=w> </span><span class=nx>ns</span><span class=o>/</span><span class=nx>op</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>BenchmarkRWMutexRead</span><span class=o>-</span><span class=mi>24</span><span class=w>     </span><span class=mi>80448913</span><span class=w>     </span><span class=mf>45.4</span><span class=w> </span><span class=nx>ns</span><span class=o>/</span><span class=nx>op</span><span class=w>  </span><span class=c1>// 3x faster for reads!</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>However</strong>, under write-heavy or mixed workloads, RWMutex&rsquo;s <code>readerCount</code> atomic operations cause Cache Line Contention, reducing its advantage.</p><h2 id=3-solution-comparison>3. Solution Comparison</h2><h3 id=31-option-1-sharded-locks>3.1 Option 1: Sharded Locks</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>const</span><span class=w> </span><span class=nx>ShardCount</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>32</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>ShardedCache</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>shards</span><span class=w> </span><span class=p>[</span><span class=nx>ShardCount</span><span class=p>]</span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>mu</span><span class=w>    </span><span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>disks</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=o>*</span><span class=nx>DiskStatus</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>ShardedCache</span><span class=p>)</span><span class=w> </span><span class=nf>getShard</span><span class=p>(</span><span class=nx>id</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=kt>int</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>h</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>fnv</span><span class=p>.</span><span class=nf>New32a</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>h</span><span class=p>.</span><span class=nf>Write</span><span class=p>([]</span><span class=nb>byte</span><span class=p>(</span><span class=nx>id</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nb>int</span><span class=p>(</span><span class=nx>h</span><span class=p>.</span><span class=nf>Sum32</span><span class=p>())</span><span class=w> </span><span class=o>%</span><span class=w> </span><span class=nx>ShardCount</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>ShardedCache</span><span class=p>)</span><span class=w> </span><span class=nf>Get</span><span class=p>(</span><span class=nx>id</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=o>*</span><span class=nx>DiskStatus</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>shard</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=o>&amp;</span><span class=nx>c</span><span class=p>.</span><span class=nx>shards</span><span class=p>[</span><span class=nx>c</span><span class=p>.</span><span class=nf>getShard</span><span class=p>(</span><span class=nx>id</span><span class=p>)]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>shard</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>RLock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nx>shard</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>RUnlock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>shard</span><span class=p>.</span><span class=nx>disks</span><span class=p>[</span><span class=nx>id</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Benchmark</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>BenchmarkShardedRead-24    173875340    20.5 ns/op  // 7x faster than Mutex!
+</span></span></code></pre></td></tr></table></div></div><h3 id=32-option-2-syncmap>3.2 Option 2: sync.Map</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>SyncMapCache</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>disks</span><span class=w> </span><span class=nx>sync</span><span class=p>.</span><span class=nx>Map</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>SyncMapCache</span><span class=p>)</span><span class=w> </span><span class=nf>Get</span><span class=p>(</span><span class=nx>id</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=o>*</span><span class=nx>DiskStatus</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>v</span><span class=p>,</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>disks</span><span class=p>.</span><span class=nf>Load</span><span class=p>(</span><span class=nx>id</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=p>!</span><span class=nx>ok</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>v</span><span class=p>.(</span><span class=o>*</span><span class=nx>DiskStatus</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Benchmark</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>BenchmarkSyncMapRead-24    343054987    10.2 ns/op  // Excellent for reads
+</span></span></code></pre></td></tr></table></div></div><p><code>sync.Map</code> is good for &ldquo;write once then read&rdquo; patterns; not as good as sharded locks for frequent updates.</p><h3 id=33-option-3-spinlock--minimal-critical-section>3.3 Option 3: Spinlock + Minimal Critical Section</h3><p>When critical section is short enough (just reading a pointer), pure spinlock might be faster:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>SpinLockCache</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>lock</span><span class=w>  </span><span class=kt>int32</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>disks</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=o>*</span><span class=nx>DiskStatus</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>SpinLockCache</span><span class=p>)</span><span class=w> </span><span class=nf>Get</span><span class=p>(</span><span class=nx>id</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=o>*</span><span class=nx>DiskStatus</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Spin acquire</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=p>!</span><span class=nx>atomic</span><span class=p>.</span><span class=nf>CompareAndSwapInt32</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>c</span><span class=p>.</span><span class=nx>lock</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=mi>1</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>runtime</span><span class=p>.</span><span class=nf>Gosched</span><span class=p>()</span><span class=w>  </span><span class=c1>// Yield CPU to avoid starvation</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Very short critical section</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>status</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>disks</span><span class=p>[</span><span class=nx>id</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>atomic</span><span class=p>.</span><span class=nf>StoreInt32</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>c</span><span class=p>.</span><span class=nx>lock</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>status</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Benchmark</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>BenchmarkSpinLockRead-24    27466878    134.6 ns/op  // Not always fastest!
+</span></span></code></pre></td></tr></table></div></div><p>But this is <strong>risky</strong> — if critical section gets slightly longer, performance collapses.</p><h3 id=34-option-4-copy-on-write>3.4 Option 4: Copy-on-Write</h3><p>Ultimate solution when reads vastly outnumber writes:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>COWCache</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>disks</span><span class=w> </span><span class=nx>atomic</span><span class=p>.</span><span class=nx>Value</span><span class=w> </span><span class=c1>// stores map[string]*DiskStatus</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>COWCache</span><span class=p>)</span><span class=w> </span><span class=nf>Get</span><span class=p>(</span><span class=nx>id</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=o>*</span><span class=nx>DiskStatus</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>m</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>disks</span><span class=p>.</span><span class=nf>Load</span><span class=p>().(</span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=o>*</span><span class=nx>DiskStatus</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>m</span><span class=p>[</span><span class=nx>id</span><span class=p>]</span><span class=w>  </span><span class=c1>// Read is completely lock-free!</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>COWCache</span><span class=p>)</span><span class=w> </span><span class=nf>Update</span><span class=p>(</span><span class=nx>id</span><span class=w> </span><span class=kt>string</span><span class=p>,</span><span class=w> </span><span class=nx>status</span><span class=w> </span><span class=o>*</span><span class=nx>DiskStatus</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>old</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>disks</span><span class=p>.</span><span class=nf>Load</span><span class=p>().(</span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=o>*</span><span class=nx>DiskStatus</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Copy entire map (write becomes slow)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>new</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>make</span><span class=p>(</span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=o>*</span><span class=nx>DiskStatus</span><span class=p>,</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>old</span><span class=p>)</span><span class=o>+</span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>for</span><span class=w> </span><span class=nx>k</span><span class=p>,</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>old</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>new</span><span class=p>[</span><span class=nx>k</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>v</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>new</span><span class=p>[</span><span class=nx>id</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>status</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>disks</span><span class=p>.</span><span class=nf>CompareAndSwap</span><span class=p>(</span><span class=nx>old</span><span class=p>,</span><span class=w> </span><span class=nx>new</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Benchmark</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>BenchmarkCOWRead-24     363207240      9.8 ns/op   // Read is ultra fast
+</span></span><span class=line><span class=cl>BenchmarkCOWWrite-24       724800   4938.0 ns/op   // Write is slow (map copy)
+</span></span></code></pre></td></tr></table></div></div><p><strong>Use case</strong>: Config caches, routing tables — &ldquo;read lots, write rarely&rdquo; data.</p><h2 id=4-performance-summary>4. Performance Summary</h2><table><thead><tr><th>Solution</th><th>Read (ns/op)</th><th>Write (ns/op)</th><th>Use Case</th></tr></thead><tbody><tr><td>sync.Mutex</td><td>142</td><td>402</td><td>General purpose</td></tr><tr><td>sync.RWMutex</td><td>45</td><td>401</td><td>Read-heavy workloads</td></tr><tr><td>Sharded locks</td><td>21</td><td>57</td><td>High concurrency R/W</td></tr><tr><td>sync.Map</td><td>10</td><td>98</td><td>Write once, read often</td></tr><tr><td>Spinlock</td><td>135</td><td>353</td><td>Risky, not recommended</td></tr><tr><td>Copy-on-Write</td><td>10</td><td>4938</td><td>Read lots, write rarely</td></tr><tr><td>Hybrid</td><td>21</td><td>56</td><td>Best of both worlds</td></tr></tbody></table><h2 id=5-final-solution>5. Final Solution</h2><p>For disk status cache, we adopted <strong>sharded locks + COW hybrid</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>HybridCache</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Hot data: sharded lock protection (21 ns read, 56 ns write)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>hot</span><span class=w> </span><span class=p>[</span><span class=mi>32</span><span class=p>]</span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>mu</span><span class=w>   </span><span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>data</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=o>*</span><span class=nx>DiskStatus</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Cold data: COW (10 ns read, but 4938 ns write - only for rarely-updated data)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>cold</span><span class=w> </span><span class=nx>atomic</span><span class=p>.</span><span class=nx>Value</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Why not just use sync.Map?</strong> While <code>sync.Map</code> achieves 10 ns reads and 98 ns writes, it&rsquo;s optimized for &ldquo;write once, read many&rdquo; patterns. Our disk cache has frequent updates to hot data (health checks every second), making sharded locks a better fit for the hot path.</p><p><strong>When to use this pattern:</strong></p><ul><li>Hot data with frequent reads AND writes → sharded locks (21/56 ns)</li><li>Cold data with rare writes → COW (10/4938 ns)</li><li>If your writes are infrequent across all data → consider <code>sync.Map</code> instead</li></ul><p><strong>Result</strong>: Reduced P99 latency from 50ms to sub-millisecond by eliminating lock contention on hot paths.</p><h2 id=6-debugging-toolchain>6. Debugging Toolchain</h2><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># 1. CPU Profile</span>
+</span></span><span class=line><span class=cl>go tool pprof http://localhost:6060/debug/pprof/profile
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 2. Lock contention analysis</span>
+</span></span><span class=line><span class=cl>go tool pprof http://localhost:6060/debug/pprof/mutex
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 3. Block analysis</span>
+</span></span><span class=line><span class=cl>go tool pprof http://localhost:6060/debug/pprof/block
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 4. View goroutine status</span>
+</span></span><span class=line><span class=cl>curl http://localhost:6060/debug/pprof/goroutine?debug<span class=o>=</span><span class=m>2</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 5. Race detection</span>
+</span></span><span class=line><span class=cl>go <span class=nb>test</span> -race ./...
+</span></span></code></pre></td></tr></table></div></div><h2 id=7-summary>7. Summary</h2><table><thead><tr><th>Principle</th><th>Explanation</th></tr></thead><tbody><tr><td>Shorten critical section</td><td>Only do essential work inside lock</td></tr><tr><td>Distribute contention</td><td>Sharded locks reduce single point</td></tr><tr><td>Separate read/write</td><td>COW makes reads lock-free</td></tr><tr><td>Avoid false sharing</td><td>Watch Cache Line alignment</td></tr><tr><td>Measure first</td><td>Use pprof to locate, don&rsquo;t guess</td></tr></tbody></table><p><strong>Core lesson</strong>: In high-concurrency scenarios, lock choice isn&rsquo;t just &ldquo;knowing how to use&rdquo; — you need to fine-tune based on actual access patterns.</p></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2025-04-02</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/250402-golang-interview/ data-title="Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning" data-hashtags=Concurrency,Locks,Performance><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/250402-golang-interview/ data-hashtag=Concurrency><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/250402-golang-interview/ data-title="Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/250402-golang-interview/ data-title="Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/250402-golang-interview/ data-title="Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/concurrency/>Concurrency</a>,&nbsp;<a href=/tags/locks/>Locks</a>,&nbsp;<a href=/tags/performance/>Performance</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/230615-linux-boot-optimization/ class=prev rel=prev title="Custom Linux Distro: From Yocto Build to 60% Boot Time Optimization"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Custom Linux Distro: From Yocto Build to 60% Boot Time Optimization</a>
+<a href=/posts/250710-temporal-saga/ class=next rel=next title="Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions">Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

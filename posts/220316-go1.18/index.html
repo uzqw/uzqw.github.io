@@ -1,0 +1,626 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Go Generics in Practice: Pitfalls and Best Practices - zqw's notes</title><meta name=Description content="After Go 1.18 shipped generics, we applied them in our NAS project. This post documents the real benefits, pitfalls, and best practices we discovered."><meta property="og:url" content="https://uzqw.github.io/posts/220316-go1.18/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Go Generics in Practice: Pitfalls and Best Practices"><meta property="og:description" content="After Go 1.18 shipped generics, we applied them in our NAS project. This post documents the real benefits, pitfalls, and best practices we discovered."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2022-03-16T12:00:00+08:00"><meta property="article:modified_time" content="2022-03-17T12:00:00+08:00"><meta property="article:tag" content="Generics"><meta property="article:tag" content="Best Practices"><meta property="article:tag" content="Refactoring"><meta name=twitter:card content="summary"><meta name=twitter:title content="Go Generics in Practice: Pitfalls and Best Practices"><meta name=twitter:description content="After Go 1.18 shipped generics, we applied them in our NAS project. This post documents the real benefits, pitfalls, and best practices we discovered."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/220316-go1.18/><link rel=prev href=https://uzqw.github.io/posts/220101-http3/><link rel=next href=https://uzqw.github.io/posts/220414-atoi/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Go Generics in Practice: Pitfalls and Best Practices","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/220316-go1.18\/"},"genre":"posts","keywords":"Generics, Best Practices, Refactoring","wordcount":1613,"url":"https:\/\/uzqw.github.io\/posts\/220316-go1.18\/","datePublished":"2022-03-16T12:00:00+08:00","dateModified":"2022-03-17T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"After Go 1.18 shipped generics, we applied them in our NAS project. This post documents the real benefits, pitfalls, and best practices we discovered."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/220316-go1.18/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/220316-go1.18/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/220316-go1.18/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/220316-go1.18/ selected>English</option><option value=https://uzqw.net/posts/220316-go1.18/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/220316-go1.18/ selected>English</option><option value=https://uzqw.net/posts/220316-go1.18/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Go Generics in Practice: Pitfalls and Best Practices</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/go/><i class="far fa-folder fa-fw" aria-hidden=true></i>Go</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2022-03-16>2022-03-16</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1613 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;8 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-why-do-we-need-generics>1. Why Do We Need Generics?</a><ul><li><a href=#11-the-pain-of-duplicate-code>1.1 The Pain of Duplicate Code</a></li><li><a href=#12-the-cost-of-interface>1.2 The Cost of interface</a></li></ul></li><li><a href=#2-basic-generic-refactoring>2. Basic Generic Refactoring</a><ul><li><a href=#21-generic-functions>2.1 Generic Functions</a></li><li><a href=#22-generic-data-structures>2.2 Generic Data Structures</a></li></ul></li><li><a href=#3-real-world-refactoring-cases>3. Real-World Refactoring Cases</a><ul><li><a href=#31-cache-module-refactoring>3.1 Cache Module Refactoring</a></li><li><a href=#32-slice-utility-functions>3.2 Slice Utility Functions</a></li></ul></li><li><a href=#4-pitfalls-we-hit>4. Pitfalls We Hit</a><ul><li><a href=#41-methods-cant-have-type-parameters>4.1 Methods Can&rsquo;t Have Type Parameters</a></li><li><a href=#42-cant-use-type-parameters-in-type-assertions>4.2 Can&rsquo;t Use Type Parameters in Type Assertions</a></li><li><a href=#43-zero-value-issues>4.3 Zero Value Issues</a></li><li><a href=#44-constraint-design>4.4 Constraint Design</a></li></ul></li><li><a href=#5-performance-comparison>5. Performance Comparison</a><ul><li><a href=#51-generics-vs-reflection>5.1 Generics vs Reflection</a></li><li><a href=#52-generics-vs-hand-written>5.2 Generics vs Hand-Written</a></li></ul></li><li><a href=#6-best-practices>6. Best Practices</a><ul><li><a href=#61-when-to-use-generics>6.1 When to Use Generics</a></li><li><a href=#62-constraint-selection>6.2 Constraint Selection</a></li><li><a href=#63-naming-conventions>6.3 Naming Conventions</a></li></ul></li><li><a href=#7-project-benefits>7. Project Benefits</a><ul><li><a href=#71-code-reduction>7.1 Code Reduction</a></li><li><a href=#72-maintenance-cost>7.2 Maintenance Cost</a></li></ul></li><li><a href=#8-summary>8. Summary</a></li></ul></nav></div></div><div class=content id=content><p>Go 1.18 finally brought generics. In our NAS project, we refactored several common modules using generics. This post documents real-world benefits, pitfalls, and best practices we learned.</p><h2 id=1-why-do-we-need-generics>1. Why Do We Need Generics?</h2><h3 id=11-the-pain-of-duplicate-code>1.1 The Pain of Duplicate Code</h3><p>Before generics, we had tons of code like this:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>ContainsInt</span><span class=p>(</span><span class=nx>slice</span><span class=w> </span><span class=p>[]</span><span class=kt>int</span><span class=p>,</span><span class=w> </span><span class=nx>target</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>slice</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=nx>target</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=kc>true</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>false</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>ContainsString</span><span class=p>(</span><span class=nx>slice</span><span class=w> </span><span class=p>[]</span><span class=kt>string</span><span class=p>,</span><span class=w> </span><span class=nx>target</span><span class=w> </span><span class=kt>string</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>slice</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=nx>target</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=kc>true</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>false</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>ContainsInt64</span><span class=p>(</span><span class=nx>slice</span><span class=w> </span><span class=p>[]</span><span class=kt>int64</span><span class=p>,</span><span class=w> </span><span class=nx>target</span><span class=w> </span><span class=kt>int64</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Same exact logic again...</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=12-the-cost-of-interface>1.2 The Cost of interface</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>Contains</span><span class=p>(</span><span class=nx>slice</span><span class=w> </span><span class=kd>interface</span><span class=p>{},</span><span class=w> </span><span class=nx>target</span><span class=w> </span><span class=kd>interface</span><span class=p>{})</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Requires reflection</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>s</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>reflect</span><span class=p>.</span><span class=nf>ValueOf</span><span class=p>(</span><span class=nx>slice</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>s</span><span class=p>.</span><span class=nf>Len</span><span class=p>();</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>reflect</span><span class=p>.</span><span class=nf>DeepEqual</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nf>Index</span><span class=p>(</span><span class=nx>i</span><span class=p>).</span><span class=nf>Interface</span><span class=p>(),</span><span class=w> </span><span class=nx>target</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=kc>true</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>false</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Problems:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// 1. Poor performance (reflection)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// 2. Not type-safe (no compile-time checks)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// 3. Poor readability</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=2-basic-generic-refactoring>2. Basic Generic Refactoring</h2><h3 id=21-generic-functions>2.1 Generic Functions</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Go 1.18+ generic version</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Contains</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=nx>comparable</span><span class=p>](</span><span class=nx>slice</span><span class=w> </span><span class=p>[]</span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=nx>target</span><span class=w> </span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>slice</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=nx>target</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w> </span><span class=kc>true</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>false</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Usage</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nf>Contains</span><span class=p>([]</span><span class=kt>int</span><span class=p>{</span><span class=mi>1</span><span class=p>,</span><span class=w> </span><span class=mi>2</span><span class=p>,</span><span class=w> </span><span class=mi>3</span><span class=p>},</span><span class=w> </span><span class=mi>2</span><span class=p>)</span><span class=w>         </span><span class=c1>// true</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nf>Contains</span><span class=p>([]</span><span class=kt>string</span><span class=p>{</span><span class=s>&#34;a&#34;</span><span class=p>,</span><span class=w> </span><span class=s>&#34;b&#34;</span><span class=p>},</span><span class=w> </span><span class=s>&#34;c&#34;</span><span class=p>)</span><span class=w>   </span><span class=c1>// false</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=22-generic-data-structures>2.2 Generic Data Structures</h3><p><strong>Generic Set</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>Set</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=nx>comparable</span><span class=p>]</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=nx>T</span><span class=p>]</span><span class=kd>struct</span><span class=p>{}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>NewSet</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=nx>comparable</span><span class=p>](</span><span class=nx>items</span><span class=w> </span><span class=o>...</span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>Set</span><span class=p>[</span><span class=nx>T</span><span class=p>]</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>s</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>make</span><span class=p>(</span><span class=nx>Set</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>item</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>items</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>s</span><span class=p>.</span><span class=nf>Add</span><span class=p>(</span><span class=nx>item</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>s</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>s</span><span class=w> </span><span class=nx>Set</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span><span class=w> </span><span class=nf>Add</span><span class=p>(</span><span class=nx>item</span><span class=w> </span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>s</span><span class=p>[</span><span class=nx>item</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=kd>struct</span><span class=p>{}{}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>s</span><span class=w> </span><span class=nx>Set</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span><span class=w> </span><span class=nf>Contains</span><span class=p>(</span><span class=nx>item</span><span class=w> </span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>s</span><span class=p>[</span><span class=nx>item</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>ok</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>s</span><span class=w> </span><span class=nx>Set</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span><span class=w> </span><span class=nf>Remove</span><span class=p>(</span><span class=nx>item</span><span class=w> </span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nb>delete</span><span class=p>(</span><span class=nx>s</span><span class=p>,</span><span class=w> </span><span class=nx>item</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Usage</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>ids</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>NewSet</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span><span class=w> </span><span class=mi>2</span><span class=p>,</span><span class=w> </span><span class=mi>3</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>ids</span><span class=p>.</span><span class=nf>Contains</span><span class=p>(</span><span class=mi>2</span><span class=p>)</span><span class=w>  </span><span class=c1>// true</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Generic Result</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Rust-inspired Result type</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>Result</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=kt>any</span><span class=p>]</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>value</span><span class=w> </span><span class=nx>T</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w>   </span><span class=kt>error</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Ok</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>value</span><span class=w> </span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>Result</span><span class=p>[</span><span class=nx>T</span><span class=p>]</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>Result</span><span class=p>[</span><span class=nx>T</span><span class=p>]{</span><span class=nx>value</span><span class=p>:</span><span class=w> </span><span class=nx>value</span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Err</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>err</span><span class=w> </span><span class=kt>error</span><span class=p>)</span><span class=w> </span><span class=nx>Result</span><span class=p>[</span><span class=nx>T</span><span class=p>]</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>Result</span><span class=p>[</span><span class=nx>T</span><span class=p>]{</span><span class=nx>err</span><span class=p>:</span><span class=w> </span><span class=nx>err</span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>r</span><span class=w> </span><span class=nx>Result</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span><span class=w> </span><span class=nf>Unwrap</span><span class=p>()</span><span class=w> </span><span class=nx>T</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>r</span><span class=p>.</span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nb>panic</span><span class=p>(</span><span class=nx>r</span><span class=p>.</span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>r</span><span class=p>.</span><span class=nx>value</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>r</span><span class=w> </span><span class=nx>Result</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span><span class=w> </span><span class=nf>UnwrapOr</span><span class=p>(</span><span class=nx>defaultValue</span><span class=w> </span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>T</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>r</span><span class=p>.</span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>defaultValue</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>r</span><span class=p>.</span><span class=nx>value</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=3-real-world-refactoring-cases>3. Real-World Refactoring Cases</h2><h3 id=31-cache-module-refactoring>3.1 Cache Module Refactoring</h3><p><strong>Before</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>IntCache</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>data</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>mu</span><span class=w>   </span><span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>StringCache</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>data</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>mu</span><span class=w>   </span><span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Had to write Get/Set/Delete for each type...</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>After</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span><span class=w> </span><span class=nx>Cache</span><span class=p>[</span><span class=nx>K</span><span class=w> </span><span class=nx>comparable</span><span class=p>,</span><span class=w> </span><span class=nx>V</span><span class=w> </span><span class=kt>any</span><span class=p>]</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>data</span><span class=w> </span><span class=kd>map</span><span class=p>[</span><span class=nx>K</span><span class=p>]</span><span class=nx>V</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>mu</span><span class=w>   </span><span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>NewCache</span><span class=p>[</span><span class=nx>K</span><span class=w> </span><span class=nx>comparable</span><span class=p>,</span><span class=w> </span><span class=nx>V</span><span class=w> </span><span class=kt>any</span><span class=p>]()</span><span class=w> </span><span class=o>*</span><span class=nx>Cache</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span><span class=w> </span><span class=nx>V</span><span class=p>]</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=o>&amp;</span><span class=nx>Cache</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span><span class=w> </span><span class=nx>V</span><span class=p>]{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>data</span><span class=p>:</span><span class=w> </span><span class=nb>make</span><span class=p>(</span><span class=kd>map</span><span class=p>[</span><span class=nx>K</span><span class=p>]</span><span class=nx>V</span><span class=p>),</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>Cache</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span><span class=w> </span><span class=nx>V</span><span class=p>])</span><span class=w> </span><span class=nf>Get</span><span class=p>(</span><span class=nx>key</span><span class=w> </span><span class=nx>K</span><span class=p>)</span><span class=w> </span><span class=p>(</span><span class=nx>V</span><span class=p>,</span><span class=w> </span><span class=kt>bool</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>RLock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>RUnlock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>val</span><span class=p>,</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>data</span><span class=p>[</span><span class=nx>key</span><span class=p>]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>val</span><span class=p>,</span><span class=w> </span><span class=nx>ok</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>Cache</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span><span class=w> </span><span class=nx>V</span><span class=p>])</span><span class=w> </span><span class=nf>Set</span><span class=p>(</span><span class=nx>key</span><span class=w> </span><span class=nx>K</span><span class=p>,</span><span class=w> </span><span class=nx>value</span><span class=w> </span><span class=nx>V</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>c</span><span class=p>.</span><span class=nx>data</span><span class=p>[</span><span class=nx>key</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>value</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>Cache</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span><span class=w> </span><span class=nx>V</span><span class=p>])</span><span class=w> </span><span class=nf>Delete</span><span class=p>(</span><span class=nx>key</span><span class=w> </span><span class=nx>K</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nb>delete</span><span class=p>(</span><span class=nx>c</span><span class=p>.</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>key</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Usage</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>userCache</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>NewCache</span><span class=p>[</span><span class=kt>int64</span><span class=p>,</span><span class=w> </span><span class=o>*</span><span class=nx>User</span><span class=p>]()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>userCache</span><span class=p>.</span><span class=nf>Set</span><span class=p>(</span><span class=mi>1001</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=nx>User</span><span class=p>{</span><span class=nx>Name</span><span class=p>:</span><span class=w> </span><span class=s>&#34;Paul&#34;</span><span class=p>})</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=32-slice-utility-functions>3.2 Slice Utility Functions</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Map: like map in other languages</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Map</span><span class=p>[</span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=nx>R</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>slice</span><span class=w> </span><span class=p>[]</span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=nx>fn</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>R</span><span class=p>)</span><span class=w> </span><span class=p>[]</span><span class=nx>R</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>result</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>make</span><span class=p>([]</span><span class=nx>R</span><span class=p>,</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>slice</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=p>,</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>slice</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>result</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nf>fn</span><span class=p>(</span><span class=nx>v</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>result</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Filter: filter elements</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Filter</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>slice</span><span class=w> </span><span class=p>[]</span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=nx>fn</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=p>)</span><span class=w> </span><span class=p>[]</span><span class=nx>T</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>result</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>make</span><span class=p>([]</span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>slice</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nf>fn</span><span class=p>(</span><span class=nx>v</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>result</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nb>append</span><span class=p>(</span><span class=nx>result</span><span class=p>,</span><span class=w> </span><span class=nx>v</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>result</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Reduce: aggregate</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Reduce</span><span class=p>[</span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=nx>R</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>slice</span><span class=w> </span><span class=p>[]</span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=nx>initial</span><span class=w> </span><span class=nx>R</span><span class=p>,</span><span class=w> </span><span class=nx>fn</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>R</span><span class=p>,</span><span class=w> </span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>R</span><span class=p>)</span><span class=w> </span><span class=nx>R</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>result</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>initial</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>slice</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>result</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nf>fn</span><span class=p>(</span><span class=nx>result</span><span class=p>,</span><span class=w> </span><span class=nx>v</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>result</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Usage examples</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>users</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=p>[]</span><span class=nx>User</span><span class=p>{{</span><span class=nx>Age</span><span class=p>:</span><span class=w> </span><span class=mi>20</span><span class=p>},</span><span class=w> </span><span class=p>{</span><span class=nx>Age</span><span class=p>:</span><span class=w> </span><span class=mi>30</span><span class=p>},</span><span class=w> </span><span class=p>{</span><span class=nx>Age</span><span class=p>:</span><span class=w> </span><span class=mi>25</span><span class=p>}}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>ages</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>Map</span><span class=p>(</span><span class=nx>users</span><span class=p>,</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>u</span><span class=w> </span><span class=nx>User</span><span class=p>)</span><span class=w> </span><span class=kt>int</span><span class=w> </span><span class=p>{</span><span class=w> </span><span class=k>return</span><span class=w> </span><span class=nx>u</span><span class=p>.</span><span class=nx>Age</span><span class=w> </span><span class=p>})</span><span class=w>         </span><span class=c1>// [20, 30, 25]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>adults</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>Filter</span><span class=p>(</span><span class=nx>users</span><span class=p>,</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>u</span><span class=w> </span><span class=nx>User</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w> </span><span class=k>return</span><span class=w> </span><span class=nx>u</span><span class=p>.</span><span class=nx>Age</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=mi>25</span><span class=w> </span><span class=p>})</span><span class=w> </span><span class=c1>// [Age:30, Age:25]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>totalAge</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>Reduce</span><span class=p>(</span><span class=nx>users</span><span class=p>,</span><span class=w> </span><span class=mi>0</span><span class=p>,</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>sum</span><span class=w> </span><span class=kt>int</span><span class=p>,</span><span class=w> </span><span class=nx>u</span><span class=w> </span><span class=nx>User</span><span class=p>)</span><span class=w> </span><span class=kt>int</span><span class=w> </span><span class=p>{</span><span class=w> </span><span class=k>return</span><span class=w> </span><span class=nx>sum</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=nx>u</span><span class=p>.</span><span class=nx>Age</span><span class=w> </span><span class=p>})</span><span class=w> </span><span class=c1>// 75</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=4-pitfalls-we-hit>4. Pitfalls We Hit</h2><h3 id=41-methods-cant-have-type-parameters>4.1 Methods Can&rsquo;t Have Type Parameters</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Wrong: methods can&#39;t have their own type parameters</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>Container</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=kt>any</span><span class=p>]</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>data</span><span class=w> </span><span class=p>[]</span><span class=nx>T</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>Container</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span><span class=w> </span><span class=nx>Map</span><span class=p>[</span><span class=nx>R</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>fn</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>R</span><span class=p>)</span><span class=w> </span><span class=p>[]</span><span class=nx>R</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Compile error: method must have no type parameters</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Correct: use a function instead</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Map</span><span class=p>[</span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=nx>R</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>c</span><span class=w> </span><span class=o>*</span><span class=nx>Container</span><span class=p>[</span><span class=nx>T</span><span class=p>],</span><span class=w> </span><span class=nx>fn</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>R</span><span class=p>)</span><span class=w> </span><span class=p>[]</span><span class=nx>R</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>result</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>make</span><span class=p>([]</span><span class=nx>R</span><span class=p>,</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>c</span><span class=p>.</span><span class=nx>data</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=p>,</span><span class=w> </span><span class=nx>v</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nx>data</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>result</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nf>fn</span><span class=p>(</span><span class=nx>v</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>result</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=42-cant-use-type-parameters-in-type-assertions>4.2 Can&rsquo;t Use Type Parameters in Type Assertions</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Wrong</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Convert</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>v</span><span class=w> </span><span class=kd>interface</span><span class=p>{})</span><span class=w> </span><span class=nx>T</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>v</span><span class=p>.(</span><span class=nx>T</span><span class=p>)</span><span class=w>  </span><span class=c1>// Compile error</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Correct: use any as intermediate type</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Convert</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>v</span><span class=w> </span><span class=kd>interface</span><span class=p>{})</span><span class=w> </span><span class=p>(</span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=kt>bool</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>result</span><span class=p>,</span><span class=w> </span><span class=nx>ok</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>v</span><span class=p>.(</span><span class=nx>T</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>result</span><span class=p>,</span><span class=w> </span><span class=nx>ok</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=43-zero-value-issues>4.3 Zero Value Issues</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nx>GetOrDefault</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>ptr</span><span class=w> </span><span class=o>*</span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>T</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>ptr</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=kd>var</span><span class=w> </span><span class=nx>zero</span><span class=w> </span><span class=nx>T</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>zero</span><span class=w>  </span><span class=c1>// Returns type&#39;s zero value</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=o>*</span><span class=nx>ptr</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// But what if you need an explicit default?</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>GetOrDefault</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=kt>any</span><span class=p>](</span><span class=nx>ptr</span><span class=w> </span><span class=o>*</span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=nx>defaultVal</span><span class=w> </span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>T</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>ptr</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>defaultVal</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=o>*</span><span class=nx>ptr</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=44-constraint-design>4.4 Constraint Design</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Custom constraint</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>Number</span><span class=w> </span><span class=kd>interface</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kt>int</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=kt>int8</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=kt>int16</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=kt>int32</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=kt>int64</span><span class=w> </span><span class=p>|</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kt>uint</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=kt>uint8</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=kt>uint16</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=kt>uint32</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=kt>uint64</span><span class=w> </span><span class=p>|</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kt>float32</span><span class=w> </span><span class=p>|</span><span class=w> </span><span class=kt>float64</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Sum</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=nx>Number</span><span class=p>](</span><span class=nx>nums</span><span class=w> </span><span class=p>[]</span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>T</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>total</span><span class=w> </span><span class=nx>T</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>n</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>nums</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>total</span><span class=w> </span><span class=o>+=</span><span class=w> </span><span class=nx>n</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>total</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Use golang.org/x/exp/constraints</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>import</span><span class=w> </span><span class=s>&#34;golang.org/x/exp/constraints&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nx>Max</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=nx>constraints</span><span class=p>.</span><span class=nx>Ordered</span><span class=p>](</span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=w> </span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=nx>T</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>a</span><span class=w> </span><span class=p>&gt;</span><span class=w> </span><span class=nx>b</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>a</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>b</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=5-performance-comparison>5. Performance Comparison</h2><h3 id=51-generics-vs-reflection>5.1 Generics vs Reflection</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Benchmark test</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>BenchmarkGeneric</span><span class=p>(</span><span class=nx>b</span><span class=w> </span><span class=o>*</span><span class=nx>testing</span><span class=p>.</span><span class=nx>B</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>slice</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>make</span><span class=p>([]</span><span class=kt>int</span><span class=p>,</span><span class=w> </span><span class=mi>1000</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>slice</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>slice</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>i</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>b</span><span class=p>.</span><span class=nf>ResetTimer</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>b</span><span class=p>.</span><span class=nx>N</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nf>Contains</span><span class=p>(</span><span class=nx>slice</span><span class=p>,</span><span class=w> </span><span class=mi>500</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>BenchmarkReflect</span><span class=p>(</span><span class=nx>b</span><span class=w> </span><span class=o>*</span><span class=nx>testing</span><span class=p>.</span><span class=nx>B</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>slice</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>make</span><span class=p>([]</span><span class=kt>int</span><span class=p>,</span><span class=w> </span><span class=mi>1000</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>slice</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>slice</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>i</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>b</span><span class=p>.</span><span class=nf>ResetTimer</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>b</span><span class=p>.</span><span class=nx>N</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nf>ContainsReflect</span><span class=p>(</span><span class=nx>slice</span><span class=p>,</span><span class=w> </span><span class=mi>500</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Results</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>BenchmarkGeneric-8     5000000    250 ns/op     0 B/op   0 allocs/op
+</span></span><span class=line><span class=cl>BenchmarkReflect-8      500000   3200 ns/op   100 B/op   5 allocs/op
+</span></span></code></pre></td></tr></table></div></div><p>Generics are <strong>12x faster</strong> with zero allocations!</p><h3 id=52-generics-vs-hand-written>5.2 Generics vs Hand-Written</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>BenchmarkGenericContains</span><span class=p>(</span><span class=nx>b</span><span class=w> </span><span class=o>*</span><span class=nx>testing</span><span class=p>.</span><span class=nx>B</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Generic version</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>BenchmarkHandwrittenContains</span><span class=p>(</span><span class=nx>b</span><span class=w> </span><span class=o>*</span><span class=nx>testing</span><span class=p>.</span><span class=nx>B</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// func ContainsInt([]int, int) bool version</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Results</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>BenchmarkGeneric-8         5000000    250 ns/op
+</span></span><span class=line><span class=cl>BenchmarkHandwritten-8     5000000    248 ns/op
+</span></span></code></pre></td></tr></table></div></div><p>Nearly identical! Go compiler generates specialized code for each type (monomorphization).</p><h2 id=6-best-practices>6. Best Practices</h2><h3 id=61-when-to-use-generics>6.1 When to Use Generics</h3><p><strong>Good fit</strong>:</p><ul><li>Container types (List, Set, Map, Stack, Queue)</li><li>Common algorithms (sort, search, filter)</li><li>Utility functions (Contains, Map, Reduce)</li></ul><p><strong>Not a good fit</strong>:</p><ul><li>Business logic code (don&rsquo;t over-abstract)</li><li>Only one or two types (not worth generalizing)</li><li>Need runtime type info (generics are compile-time)</li></ul><h3 id=62-constraint-selection>6.2 Constraint Selection</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Prefer built-in constraints</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kt>any</span><span class=w>         </span><span class=c1>// Any type</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>comparable</span><span class=w>  </span><span class=c1>// Types supporting == !=</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Use x/exp/constraints</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>constraints</span><span class=p>.</span><span class=nx>Ordered</span><span class=w>    </span><span class=c1>// Supports &lt; &gt; &lt;= &gt;=</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>constraints</span><span class=p>.</span><span class=nx>Integer</span><span class=w>    </span><span class=c1>// Integers</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>constraints</span><span class=p>.</span><span class=nx>Float</span><span class=w>      </span><span class=c1>// Floats</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>constraints</span><span class=p>.</span><span class=nx>Signed</span><span class=w>     </span><span class=c1>// Signed numbers</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>constraints</span><span class=p>.</span><span class=nx>Unsigned</span><span class=w>   </span><span class=c1>// Unsigned numbers</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=63-naming-conventions>6.3 Naming Conventions</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Type parameter naming</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>T</span><span class=w>        </span><span class=c1>// Single type</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>K</span><span class=p>,</span><span class=w> </span><span class=nx>V</span><span class=w>     </span><span class=c1>// Key-value pair</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>T</span><span class=p>,</span><span class=w> </span><span class=nx>R</span><span class=w>     </span><span class=c1>// Input-output</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>E</span><span class=w>        </span><span class=c1>// Element</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>S</span><span class=w>        </span><span class=c1>// Slice</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Constraint naming</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>Stringer</span><span class=w> </span><span class=kd>interface</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nf>String</span><span class=p>()</span><span class=w> </span><span class=kt>string</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>Comparable</span><span class=p>[</span><span class=nx>T</span><span class=w> </span><span class=kt>any</span><span class=p>]</span><span class=w> </span><span class=kd>interface</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nf>Compare</span><span class=p>(</span><span class=nx>T</span><span class=p>)</span><span class=w> </span><span class=kt>int</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=7-project-benefits>7. Project Benefits</h2><h3 id=71-code-reduction>7.1 Code Reduction</h3><table><thead><tr><th>Module</th><th>Before</th><th>After</th><th>Reduction</th></tr></thead><tbody><tr><td>Cache</td><td>450 lines</td><td>120 lines</td><td>-73%</td></tr><tr><td>Slice utils</td><td>280 lines</td><td>80 lines</td><td>-71%</td></tr><tr><td>Data structures</td><td>600 lines</td><td>200 lines</td><td>-67%</td></tr></tbody></table><h3 id=72-maintenance-cost>7.2 Maintenance Cost</h3><ul><li><strong>Bug fixes</strong>: Used to fix N versions, now fix once</li><li><strong>New types</strong>: Used to copy code, now just use</li><li><strong>Type safety</strong>: Errors caught at compile time</li></ul><h2 id=8-summary>8. Summary</h2><table><thead><tr><th>Point</th><th>Recommendation</th></tr></thead><tbody><tr><td>Use cases</td><td>Containers, utilities, algorithms</td></tr><tr><td>Performance</td><td>Equal to hand-written, far better than reflection</td></tr><tr><td>Constraints</td><td>Prefer any/comparable/constraints</td></tr><tr><td>Methods</td><td>Methods can&rsquo;t have type params, use functions</td></tr><tr><td>Zero values</td><td>Use <code>var zero T</code> to get them</td></tr></tbody></table><p><strong>Key takeaway</strong>: Generics aren&rsquo;t a silver bullet, but in the right scenarios, they significantly reduce duplicate code while maintaining type safety and performance.</p></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2022-03-17</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/220316-go1.18/ data-title="Go Generics in Practice: Pitfalls and Best Practices" data-hashtags="Generics,Best Practices,Refactoring"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/220316-go1.18/ data-hashtag=Generics><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/220316-go1.18/ data-title="Go Generics in Practice: Pitfalls and Best Practices"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/220316-go1.18/ data-title="Go Generics in Practice: Pitfalls and Best Practices"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/220316-go1.18/ data-title="Go Generics in Practice: Pitfalls and Best Practices"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/generics/>Generics</a>,&nbsp;<a href=/tags/best-practices/>Best Practices</a>,&nbsp;<a href=/tags/refactoring/>Refactoring</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/220101-http3/ class=prev rel=prev title="HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>HTTP/3 Benchmarks: QUIC Performance on Lossy Networks with Packet Analysis</a>
+<a href=/posts/220414-atoi/ class=next rel=next title="Production-Grade String Parsing: From atoi to State Machine">Production-Grade String Parsing: From atoi to State Machine<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

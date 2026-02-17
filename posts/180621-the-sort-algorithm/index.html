@@ -1,0 +1,321 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>From TimSort to pdqsort: Engineering Optimizations in Production Sorting - zqw's notes</title><meta name=Description content="Personal tech blog about Go, Linux, and backend development"><meta property="og:url" content="https://uzqw.github.io/posts/180621-the-sort-algorithm/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="From TimSort to pdqsort: Engineering Optimizations in Production Sorting"><meta property="og:description" content="Textbook quicksort is just the starting point. Real-world sorting algorithms have undergone decades of engineering optimization. This post deep-dives into Python’s TimSort and Go/Rust’s pdqsort, revealing the gap between “industrial-grade” and “textbook-grade”."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2018-06-21T21:18:34+08:00"><meta property="article:modified_time" content="2022-03-17T12:00:00+08:00"><meta property="article:tag" content="Sorting Algorithms"><meta property="article:tag" content="Source Code Analysis"><meta property="article:tag" content="Performance"><meta name=twitter:card content="summary"><meta name=twitter:title content="From TimSort to pdqsort: Engineering Optimizations in Production Sorting"><meta name=twitter:description content="Textbook quicksort is just the starting point. Real-world sorting algorithms have undergone decades of engineering optimization. This post deep-dives into Python’s TimSort and Go/Rust’s pdqsort, revealing the gap between “industrial-grade” and “textbook-grade”."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/180621-the-sort-algorithm/><link rel=next href=https://uzqw.github.io/posts/210111-shift-operation/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"From TimSort to pdqsort: Engineering Optimizations in Production Sorting","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/180621-the-sort-algorithm\/"},"genre":"posts","keywords":"Sorting Algorithms, Source Code Analysis, Performance","wordcount":1267,"url":"https:\/\/uzqw.github.io\/posts\/180621-the-sort-algorithm\/","datePublished":"2018-06-21T21:18:34+08:00","dateModified":"2022-03-17T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":""}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/180621-the-sort-algorithm/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/180621-the-sort-algorithm/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/180621-the-sort-algorithm/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/180621-the-sort-algorithm/ selected>English</option><option value=https://uzqw.net/posts/180621-the-sort-algorithm/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/180621-the-sort-algorithm/ selected>English</option><option value=https://uzqw.net/posts/180621-the-sort-algorithm/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">From TimSort to pdqsort: Engineering Optimizations in Production Sorting</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/go/><i class="far fa-folder fa-fw" aria-hidden=true></i>Go</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2018-06-21>2018-06-21</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1267 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;6 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-limitations-of-textbook-sorting>1. Limitations of Textbook Sorting</a><ul><li><a href=#11-quicksort-theory-vs-reality>1.1 Quicksort: Theory vs Reality</a></li><li><a href=#12-language-choices>1.2 Language Choices</a></li></ul></li><li><a href=#2-timsort-designed-for-real-data>2. TimSort: Designed for Real Data</a><ul><li><a href=#21-core-insight>2.1 Core Insight</a></li><li><a href=#22-algorithm-structure>2.2 Algorithm Structure</a></li><li><a href=#23-key-optimizations>2.3 Key Optimizations</a></li><li><a href=#24-performance-characteristics>2.4 Performance Characteristics</a></li></ul></li><li><a href=#3-pdqsort-modern-quicksorts-peak>3. pdqsort: Modern Quicksort&rsquo;s Peak</a><ul><li><a href=#31-design-goals>3.1 Design Goals</a></li><li><a href=#32-core-techniques>3.2 Core Techniques</a></li><li><a href=#33-go-119-sort-package-source>3.3 Go 1.19 sort Package Source</a></li></ul></li><li><a href=#4-performance-comparison>4. Performance Comparison</a><ul><li><a href=#41-test-code>4.1 Test Code</a></li><li><a href=#42-typical-results>4.2 Typical Results</a></li></ul></li><li><a href=#5-engineering-insights>5. Engineering Insights</a><ul><li><a href=#51-no-silver-bullet>5.1 No Silver Bullet</a></li><li><a href=#52-custom-sort-gotchas>5.2 Custom Sort Gotchas</a></li><li><a href=#53-when-to-write-your-own-sort>5.3 When to Write Your Own Sort?</a></li></ul></li><li><a href=#6-summary>6. Summary</a></li></ul></nav></div></div><div class=content id=content><p>Textbook quicksort is just the starting point. Real-world sorting algorithms have undergone decades of engineering optimization. This post deep-dives into Python&rsquo;s TimSort and Go/Rust&rsquo;s pdqsort, revealing the gap between &ldquo;industrial-grade&rdquo; and &ldquo;textbook-grade&rdquo;.</p><h2 id=1-limitations-of-textbook-sorting>1. Limitations of Textbook Sorting</h2><h3 id=11-quicksort-theory-vs-reality>1.1 Quicksort: Theory vs Reality</h3><p>Textbook quicksort:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>quickSort</span><span class=p>(</span><span class=nx>arr</span><span class=w> </span><span class=p>[]</span><span class=kt>int</span><span class=p>,</span><span class=w> </span><span class=nx>low</span><span class=p>,</span><span class=w> </span><span class=nx>high</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>low</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>high</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>pivot</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>partition</span><span class=p>(</span><span class=nx>arr</span><span class=p>,</span><span class=w> </span><span class=nx>low</span><span class=p>,</span><span class=w> </span><span class=nx>high</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nf>quickSort</span><span class=p>(</span><span class=nx>arr</span><span class=p>,</span><span class=w> </span><span class=nx>low</span><span class=p>,</span><span class=w> </span><span class=nx>pivot</span><span class=o>-</span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nf>quickSort</span><span class=p>(</span><span class=nx>arr</span><span class=p>,</span><span class=w> </span><span class=nx>pivot</span><span class=o>+</span><span class=mi>1</span><span class=p>,</span><span class=w> </span><span class=nx>high</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Theory</strong>: Average O(n log n), in-place, perfect.</p><p><strong>Reality problems</strong>:</p><ol><li><strong>Worst case O(n²)</strong>: Sorted/reversed arrays degrade</li><li><strong>Recursion overhead</strong>: Depth can reach n, stack overflow risk</li><li><strong>Cache unfriendly</strong>: Random access pattern</li><li><strong>Unstable</strong>: Equal element order may change</li></ol><h3 id=12-language-choices>1.2 Language Choices</h3><table><thead><tr><th>Language</th><th>Default Sort</th><th>Characteristics</th></tr></thead><tbody><tr><td>Python</td><td>TimSort</td><td>Stable, exploits existing order</td></tr><tr><td>Go 1.19+</td><td>pdqsort</td><td>Fast, unstable, avoids worst case</td></tr><tr><td>Rust</td><td>pdqsort</td><td>Same as Go</td></tr><tr><td>Java</td><td>TimSort (objects) / DualPivot (primitives)</td><td>Optimized per type</td></tr><tr><td>C++</td><td>IntroSort</td><td>Quicksort + heapsort hybrid</td></tr></tbody></table><h2 id=2-timsort-designed-for-real-data>2. TimSort: Designed for Real Data</h2><h3 id=21-core-insight>2.1 Core Insight</h3><p>TimSort&rsquo;s designer Tim Peters (Python core dev) observed:</p><blockquote><p>&ldquo;Real-world data is often partially sorted&rdquo;</p></blockquote><p>Logs sorted by time, database records by ID, append-only data — all have &ldquo;run&rdquo; characteristics.</p><h3 id=22-algorithm-structure>2.2 Algorithm Structure</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Input: [1, 2, 3, 8, 7, 6, 5, 10, 11, 12]
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Step 1: Identify runs
+</span></span><span class=line><span class=cl>  Run 1: [1, 2, 3] (ascending)
+</span></span><span class=line><span class=cl>  Run 2: [8, 7, 6, 5] → reverse to [5, 6, 7, 8]
+</span></span><span class=line><span class=cl>  Run 3: [10, 11, 12] (ascending)
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Step 2: Merge runs (merge sort)
+</span></span><span class=line><span class=cl>  [1, 2, 3] + [5, 6, 7, 8] → [1, 2, 3, 5, 6, 7, 8]
+</span></span><span class=line><span class=cl>  + [10, 11, 12] → [1, 2, 3, 5, 6, 7, 8, 10, 11, 12]
+</span></span></code></pre></td></tr></table></div></div><h3 id=23-key-optimizations>2.3 Key Optimizations</h3><p><strong>1. Minimum run length</strong></p><p>If run is too short, use insertion sort to extend to minrun (typically 32-64).</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=c1># CPython source (simplified)</span>
+</span></span><span class=line><span class=cl><span class=k>def</span> <span class=nf>binary_insertion_sort</span><span class=p>(</span><span class=n>arr</span><span class=p>,</span> <span class=n>lo</span><span class=p>,</span> <span class=n>hi</span><span class=p>,</span> <span class=n>start</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=s2>&#34;&#34;&#34;Binary insertion sort in [lo, hi)&#34;&#34;&#34;</span>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=n>i</span> <span class=ow>in</span> <span class=nb>range</span><span class=p>(</span><span class=n>start</span><span class=p>,</span> <span class=n>hi</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>        <span class=n>pivot</span> <span class=o>=</span> <span class=n>arr</span><span class=p>[</span><span class=n>i</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>        <span class=c1># Binary search for insert position</span>
+</span></span><span class=line><span class=cl>        <span class=n>left</span><span class=p>,</span> <span class=n>right</span> <span class=o>=</span> <span class=n>lo</span><span class=p>,</span> <span class=n>i</span>
+</span></span><span class=line><span class=cl>        <span class=k>while</span> <span class=n>left</span> <span class=o>&lt;</span> <span class=n>right</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=n>mid</span> <span class=o>=</span> <span class=p>(</span><span class=n>left</span> <span class=o>+</span> <span class=n>right</span><span class=p>)</span> <span class=o>//</span> <span class=mi>2</span>
+</span></span><span class=line><span class=cl>            <span class=k>if</span> <span class=n>arr</span><span class=p>[</span><span class=n>mid</span><span class=p>]</span> <span class=o>&gt;</span> <span class=n>pivot</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>                <span class=n>right</span> <span class=o>=</span> <span class=n>mid</span>
+</span></span><span class=line><span class=cl>            <span class=k>else</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>                <span class=n>left</span> <span class=o>=</span> <span class=n>mid</span> <span class=o>+</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl>        <span class=c1># Move elements</span>
+</span></span><span class=line><span class=cl>        <span class=n>arr</span><span class=p>[</span><span class=n>left</span><span class=o>+</span><span class=mi>1</span><span class=p>:</span><span class=n>i</span><span class=o>+</span><span class=mi>1</span><span class=p>]</span> <span class=o>=</span> <span class=n>arr</span><span class=p>[</span><span class=n>left</span><span class=p>:</span><span class=n>i</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>        <span class=n>arr</span><span class=p>[</span><span class=n>left</span><span class=p>]</span> <span class=o>=</span> <span class=n>pivot</span>
+</span></span></code></pre></td></tr></table></div></div><p>Why insertion sort for small arrays?</p><ul><li>Small constant factor</li><li>Cache friendly (sequential access)</li><li>O(n) for nearly-sorted data</li></ul><p><strong>2. Galloping Mode</strong></p><p>When merging two runs, if one run keeps &ldquo;winning&rdquo;, data distribution is uneven:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=c1># Normal merge: compare one by one</span>
+</span></span><span class=line><span class=cl><span class=p>[</span><span class=mi>1</span><span class=p>,</span> <span class=mi>2</span><span class=p>,</span> <span class=mi>3</span><span class=p>,</span> <span class=mi>4</span><span class=p>,</span> <span class=mi>100</span><span class=p>]</span> <span class=o>+</span> <span class=p>[</span><span class=mi>50</span><span class=p>,</span> <span class=mi>51</span><span class=p>,</span> <span class=mi>52</span><span class=p>,</span> <span class=mi>53</span><span class=p>,</span> <span class=mi>54</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># After detecting run1 consistently smaller, switch to galloping:</span>
+</span></span><span class=line><span class=cl><span class=c1># Exponential search to find where 100 should insert in [50, 51, 52, 53, 54]</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>3. Run stack balancing</strong></p><p>TimSort maintains a run stack, following &ldquo;merge policy&rdquo; to ensure balanced merging:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Rules (counting from stack top):
+</span></span><span class=line><span class=cl>  A &gt; B + C
+</span></span><span class=line><span class=cl>  B &gt; C
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Violation triggers merge, guarantees stack height O(log n)
+</span></span></code></pre></td></tr></table></div></div><h3 id=24-performance-characteristics>2.4 Performance Characteristics</h3><table><thead><tr><th>Scenario</th><th>Time Complexity</th></tr></thead><tbody><tr><td>Fully sorted</td><td>O(n)</td></tr><tr><td>Reversed</td><td>O(n) (reverse)</td></tr><tr><td>Random</td><td>O(n log n)</td></tr><tr><td>Partially sorted</td><td>Between O(n) and O(n log n)</td></tr></tbody></table><p><strong>Stability</strong>: Guarantees equal elements keep order, friendly for object sorting.</p><h2 id=3-pdqsort-modern-quicksorts-peak>3. pdqsort: Modern Quicksort&rsquo;s Peak</h2><h3 id=31-design-goals>3.1 Design Goals</h3><p>pdqsort (Pattern-Defeating Quicksort) goals:</p><ul><li>Average performance close to quicksort</li><li>Worst case O(n log n)</li><li>Detect special patterns to accelerate</li><li>Unstable but extremely fast</li></ul><h3 id=32-core-techniques>3.2 Core Techniques</h3><p><strong>1. Adaptive pivot selection</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Go source (sort package) simplified</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>choosePivot</span><span class=p>(</span><span class=nx>data</span><span class=w> </span><span class=p>[]</span><span class=kt>int</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=kt>int</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>l</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>b</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=nx>a</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Small array: take middle</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>l</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>8</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>a</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=nx>l</span><span class=o>/</span><span class=mi>2</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Medium array: median of three</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>l</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>50</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>m</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>a</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=nx>l</span><span class=o>/</span><span class=mi>2</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nf>medianOfThree</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>m</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=o>-</span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Large array: ninther (median of 9)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>m</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>a</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=nx>l</span><span class=o>/</span><span class=mi>2</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nf>ninther</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>m</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=o>-</span><span class=mi>1</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>2. Bad pivot detection</strong></p><p>If pivot splits too unevenly (&lt;1/8), might be &ldquo;killer input&rdquo;:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=k>if</span><span class=w> </span><span class=nx>partitionSize</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>length</span><span class=o>/</span><span class=mi>8</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>badPivotCount</span><span class=o>++</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>badPivotCount</span><span class=w> </span><span class=o>&gt;=</span><span class=w> </span><span class=nx>maxBadPivots</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Switch to heapsort, guarantee O(n log n)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nf>heapSort</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p>This is what &ldquo;Pattern-Defeating&rdquo; means: detect and defeat inputs trying to trigger worst case.</p><p><strong>3. Equal element partition (Dutch National Flag)</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Input: [5, 3, 5, 7, 5, 2, 5]
+</span></span><span class=line><span class=cl>pivot = 5
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Three-way partition:
+</span></span><span class=line><span class=cl>[2, 3] [5, 5, 5, 5] [7]
+</span></span><span class=line><span class=cl> &lt; 5       = 5       &gt; 5
+</span></span></code></pre></td></tr></table></div></div><p>For arrays with many duplicates, skip the middle section entirely.</p><p><strong>4. Small array optimization</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Less than 12 elements, use insertion sort</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>if</span><span class=w> </span><span class=nx>b</span><span class=o>-</span><span class=nx>a</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=mi>12</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nf>insertionSort</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=33-go-119-sort-package-source>3.3 Go 1.19 sort Package Source</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// src/sort/zsortinterface.go</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>pdqsort</span><span class=p>(</span><span class=nx>data</span><span class=w> </span><span class=nx>Interface</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=p>,</span><span class=w> </span><span class=nx>limit</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>const</span><span class=w> </span><span class=nx>maxInsertion</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=mi>12</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>length</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>b</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=nx>a</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Small arrays use insertion sort</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>length</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>maxInsertion</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nf>insertionSort</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Too many bad pivots, switch to heapsort</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>limit</span><span class=w> </span><span class=o>==</span><span class=w> </span><span class=mi>0</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nf>heapSort</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=k>return</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Choose pivot and partition</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>pivot</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>choosePivot</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>mid</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>partition</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=p>,</span><span class=w> </span><span class=nx>pivot</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Detect bad partition</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>mid</span><span class=o>-</span><span class=nx>a</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>length</span><span class=o>/</span><span class=mi>8</span><span class=w> </span><span class=o>||</span><span class=w> </span><span class=nx>b</span><span class=o>-</span><span class=nx>mid</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>length</span><span class=o>/</span><span class=mi>8</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>limit</span><span class=o>--</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Recurse (tail call optimization: recurse small, loop large)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>if</span><span class=w> </span><span class=nx>mid</span><span class=o>-</span><span class=nx>a</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>b</span><span class=o>-</span><span class=nx>mid</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nf>pdqsort</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>a</span><span class=p>,</span><span class=w> </span><span class=nx>mid</span><span class=p>,</span><span class=w> </span><span class=nx>limit</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>a</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>mid</span><span class=w> </span><span class=o>+</span><span class=w> </span><span class=mi>1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w> </span><span class=k>else</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nf>pdqsort</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>mid</span><span class=o>+</span><span class=mi>1</span><span class=p>,</span><span class=w> </span><span class=nx>b</span><span class=p>,</span><span class=w> </span><span class=nx>limit</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>b</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>mid</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=4-performance-comparison>4. Performance Comparison</h2><h3 id=41-test-code>4.1 Test Code</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>BenchmarkSorts</span><span class=p>(</span><span class=nx>b</span><span class=w> </span><span class=o>*</span><span class=nx>testing</span><span class=p>.</span><span class=nx>B</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>sizes</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=p>[]</span><span class=kt>int</span><span class=p>{</span><span class=mi>100</span><span class=p>,</span><span class=w> </span><span class=mi>1000</span><span class=p>,</span><span class=w> </span><span class=mi>10000</span><span class=p>,</span><span class=w> </span><span class=mi>100000</span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>patterns</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=p>[]</span><span class=kt>string</span><span class=p>{</span><span class=s>&#34;random&#34;</span><span class=p>,</span><span class=w> </span><span class=s>&#34;sorted&#34;</span><span class=p>,</span><span class=w> </span><span class=s>&#34;reversed&#34;</span><span class=p>,</span><span class=w> </span><span class=s>&#34;partial&#34;</span><span class=p>,</span><span class=w> </span><span class=s>&#34;duplicates&#34;</span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>size</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>sizes</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>for</span><span class=w> </span><span class=nx>_</span><span class=p>,</span><span class=w> </span><span class=nx>pattern</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=k>range</span><span class=w> </span><span class=nx>patterns</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>b</span><span class=p>.</span><span class=nf>Run</span><span class=p>(</span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;%s-%d&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>pattern</span><span class=p>,</span><span class=w> </span><span class=nx>size</span><span class=p>),</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>b</span><span class=w> </span><span class=o>*</span><span class=nx>testing</span><span class=p>.</span><span class=nx>B</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>data</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nf>generateData</span><span class=p>(</span><span class=nx>pattern</span><span class=p>,</span><span class=w> </span><span class=nx>size</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=nx>b</span><span class=p>.</span><span class=nf>ResetTimer</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=k>for</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=mi>0</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>b</span><span class=p>.</span><span class=nx>N</span><span class=p>;</span><span class=w> </span><span class=nx>i</span><span class=o>++</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                    </span><span class=nx>arr</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nb>make</span><span class=p>([]</span><span class=kt>int</span><span class=p>,</span><span class=w> </span><span class=nb>len</span><span class=p>(</span><span class=nx>data</span><span class=p>))</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                    </span><span class=nb>copy</span><span class=p>(</span><span class=nx>arr</span><span class=p>,</span><span class=w> </span><span class=nx>data</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                    </span><span class=nx>sort</span><span class=p>.</span><span class=nf>Ints</span><span class=p>(</span><span class=nx>arr</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>                </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=p>})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=42-typical-results>4.2 Typical Results</h3><table><thead><tr><th>Data Pattern</th><th>100K elements</th><th>Winner</th></tr></thead><tbody><tr><td>Random</td><td>6ms</td><td>pdqsort (quicksort genes)</td></tr><tr><td>Sorted</td><td>0.5ms</td><td>TimSort (direct detection)</td></tr><tr><td>Reversed</td><td>0.5ms</td><td>TimSort (reverse)</td></tr><tr><td>Partially sorted</td><td>2ms</td><td>TimSort</td></tr><tr><td>Many duplicates</td><td>2ms</td><td>pdqsort (3-way partition)</td></tr></tbody></table><h2 id=5-engineering-insights>5. Engineering Insights</h2><h3 id=51-no-silver-bullet>5.1 No Silver Bullet</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Need stable sort?</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>sort</span><span class=p>.</span><span class=nf>SliceStable</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>less</span><span class=p>)</span><span class=w>  </span><span class=c1>// TimSort-inspired stable sort</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Maximum performance?</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>sort</span><span class=p>.</span><span class=nf>Slice</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span><span class=w> </span><span class=nx>less</span><span class=p>)</span><span class=w>  </span><span class=c1>// pdqsort</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=52-custom-sort-gotchas>5.2 Custom Sort Gotchas</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Wrong: inconsistent comparison</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>sort</span><span class=p>.</span><span class=nf>Slice</span><span class=p>(</span><span class=nx>users</span><span class=p>,</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>i</span><span class=p>,</span><span class=w> </span><span class=nx>j</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>users</span><span class=p>[</span><span class=nx>i</span><span class=p>].</span><span class=nx>Name</span><span class=w> </span><span class=o>&lt;=</span><span class=w> </span><span class=nx>users</span><span class=p>[</span><span class=nx>j</span><span class=p>].</span><span class=nx>Name</span><span class=w>  </span><span class=c1>// &lt;= instead of &lt;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// May cause infinite loop!</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Correct</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>sort</span><span class=p>.</span><span class=nf>Slice</span><span class=p>(</span><span class=nx>users</span><span class=p>,</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>i</span><span class=p>,</span><span class=w> </span><span class=nx>j</span><span class=w> </span><span class=kt>int</span><span class=p>)</span><span class=w> </span><span class=kt>bool</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>users</span><span class=p>[</span><span class=nx>i</span><span class=p>].</span><span class=nx>Name</span><span class=w> </span><span class=p>&lt;</span><span class=w> </span><span class=nx>users</span><span class=p>[</span><span class=nx>j</span><span class=p>].</span><span class=nx>Name</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>})</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=53-when-to-write-your-own-sort>5.3 When to Write Your Own Sort?</h3><p>Almost never. Standard library is already optimal.</p><p>Exceptions:</p><ul><li>Ultra-large distributed sorting (MapReduce)</li><li>Hardware-specific optimization (GPU sorting)</li><li>External sorting (disk merge)</li></ul><h2 id=6-summary>6. Summary</h2><table><thead><tr><th>Algorithm</th><th>Design Philosophy</th><th>Use Case</th></tr></thead><tbody><tr><td>TimSort</td><td>Exploit existing runs</td><td>Python/Java object sorting</td></tr><tr><td>pdqsort</td><td>Defend against worst case</td><td>Go/Rust high-performance</td></tr><tr><td>IntroSort</td><td>Quicksort + heapsort hybrid</td><td>C++ STL</td></tr></tbody></table><p><strong>Key takeaways</strong>:</p><ol><li>Real data is often partially sorted — TimSort exploits this</li><li>Malicious input can attack quicksort — pdqsort detects and defends</li><li>Insertion sort for small arrays — every implementation agrees</li><li>Engineering optimization matters more than algorithm choice</li></ol></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2022-03-17</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/180621-the-sort-algorithm/ data-title="From TimSort to pdqsort: Engineering Optimizations in Production Sorting" data-hashtags="Sorting Algorithms,Source Code Analysis,Performance"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/180621-the-sort-algorithm/ data-hashtag="Sorting Algorithms"><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/180621-the-sort-algorithm/ data-title="From TimSort to pdqsort: Engineering Optimizations in Production Sorting"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/180621-the-sort-algorithm/ data-title="From TimSort to pdqsort: Engineering Optimizations in Production Sorting"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/180621-the-sort-algorithm/ data-title="From TimSort to pdqsort: Engineering Optimizations in Production Sorting"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/sorting-algorithms/>Sorting Algorithms</a>,&nbsp;<a href=/tags/source-code-analysis/>Source Code Analysis</a>,&nbsp;<a href=/tags/performance/>Performance</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/210111-shift-operation/ class=next rel=next title="Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems">Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><link rel=stylesheet href=/lib/katex/katex.min.css><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript src=/lib/katex/katex.min.js></script><script type=text/javascript src=/lib/katex/contrib/auto-render.min.js></script><script type=text/javascript src=/lib/katex/contrib/copy-tex.min.js></script><script type=text/javascript src=/lib/katex/contrib/mhchem.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},math:{delimiters:[{display:!0,left:"$$",right:"$$"},{display:!0,left:"\\[",right:"\\]"},{display:!0,left:"\\begin{equation}",right:"\\end{equation}"},{display:!0,left:"\\begin{equation*}",right:"\\end{equation*}"},{display:!0,left:"\\begin{align}",right:"\\end{align}"},{display:!0,left:"\\begin{align*}",right:"\\end{align*}"},{display:!0,left:"\\begin{alignat}",right:"\\end{alignat}"},{display:!0,left:"\\begin{alignat*}",right:"\\end{alignat*}"},{display:!0,left:"\\begin{gather}",right:"\\end{gather}"},{display:!0,left:"\\begin{CD}",right:"\\end{CD}"},{display:!1,left:"$",right:"$"},{display:!1,left:"\\(",right:"\\)"}],strict:!1},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

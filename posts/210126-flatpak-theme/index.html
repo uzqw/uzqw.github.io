@@ -1,0 +1,212 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles - zqw's notes</title><meta name=Description content="Starting from a PDF reader dark mode requirement, deep-diving into Flatpak's sandbox mechanism, filesystem isolation, and proper theme override configuration. These concepts parallel containerized application configuration."><meta property="og:url" content="https://uzqw.github.io/posts/210126-flatpak-theme/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles"><meta property="og:description" content="Starting from a PDF reader dark mode requirement, deep-diving into Flatpak's sandbox mechanism, filesystem isolation, and proper theme override configuration. These concepts parallel containerized application configuration."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-01-26T21:56:00+08:00"><meta property="article:modified_time" content="2024-06-15T12:00:00+08:00"><meta property="article:tag" content="Containers"><meta property="article:tag" content="Sandbox"><meta property="article:tag" content="Namespaces"><meta name=twitter:card content="summary"><meta name=twitter:title content="Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles"><meta name=twitter:description content="Starting from a PDF reader dark mode requirement, deep-diving into Flatpak's sandbox mechanism, filesystem isolation, and proper theme override configuration. These concepts parallel containerized application configuration."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/210126-flatpak-theme/><link rel=prev href=https://uzqw.github.io/posts/210111-shift-operation/><link rel=next href=https://uzqw.github.io/posts/210321-hugo-auto-deployment/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/210126-flatpak-theme\/"},"genre":"posts","keywords":"Containers, Sandbox, Namespaces","wordcount":783,"url":"https:\/\/uzqw.github.io\/posts\/210126-flatpak-theme\/","datePublished":"2021-01-26T21:56:00+08:00","dateModified":"2024-06-15T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"Starting from a PDF reader dark mode requirement, deep-diving into Flatpak's sandbox mechanism, filesystem isolation, and proper theme override configuration. These concepts parallel containerized application configuration."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/210126-flatpak-theme/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/210126-flatpak-theme/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/210126-flatpak-theme/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/210126-flatpak-theme/ selected>English</option><option value=https://uzqw.net/posts/210126-flatpak-theme/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/210126-flatpak-theme/ selected>English</option><option value=https://uzqw.net/posts/210126-flatpak-theme/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/linux/><i class="far fa-folder fa-fw" aria-hidden=true></i>Linux</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2021-01-26>2021-01-26</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;783 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;4 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-problem-background>1. Problem Background</a><ul><li><a href=#11-flatpak-sandbox-mechanism>1.1 Flatpak Sandbox Mechanism</a></li><li><a href=#12-docker-analogy>1.2 Docker Analogy</a></li></ul></li><li><a href=#2-solution>2. Solution</a><ul><li><a href=#21-install-kvantum-theme-engine>2.1 Install Kvantum Theme Engine</a></li><li><a href=#22-configure-dark-theme>2.2 Configure Dark Theme</a></li><li><a href=#23-key-grant-flatpak-access-to-theme-config>2.3 Key: Grant Flatpak Access to Theme Config</a></li><li><a href=#24-verify-mount>2.4 Verify Mount</a></li></ul></li><li><a href=#3-deep-dive-flatpak-sandbox>3. Deep Dive: Flatpak Sandbox</a><ul><li><a href=#31-namespace-isolation>3.1 Namespace Isolation</a></li><li><a href=#32-filesystem-isolation>3.2 Filesystem Isolation</a></li><li><a href=#33-portal-mechanism>3.3 Portal Mechanism</a></li></ul></li><li><a href=#4-batch-configuration>4. Batch Configuration</a><ul><li><a href=#41-global-theme-config>4.1 Global Theme Config</a></li><li><a href=#42-config-file-format>4.2 Config File Format</a></li><li><a href=#43-reset-configuration>4.3 Reset Configuration</a></li></ul></li><li><a href=#5-connection-to-container-configuration>5. Connection to Container Configuration</a><ul><li><a href=#51-configuration-injection-patterns>5.1 Configuration Injection Patterns</a></li><li><a href=#52-least-privilege-principle>5.2 Least Privilege Principle</a></li></ul></li><li><a href=#6-troubleshooting>6. Troubleshooting</a><ul><li><a href=#61-view-app-actual-permissions>6.1 View App Actual Permissions</a></li><li><a href=#62-view-runtime-environment>6.2 View Runtime Environment</a></li><li><a href=#63-check-file-accessibility>6.3 Check File Accessibility</a></li></ul></li><li><a href=#7-summary>7. Summary</a></li></ul></nav></div></div><div class=content id=content><p>A simple requirement: make a Flatpak-installed PDF reader support dark mode. But solving it involves Flatpak&rsquo;s sandbox mechanism, filesystem mounts, and environment variable injection — concepts highly similar to Docker/K8s containerization.</p><h2 id=1-problem-background>1. Problem Background</h2><p>After installing Okular (PDF reader) via Flatpak on Linux desktop, it doesn&rsquo;t follow the system dark theme. Reason: <strong>Flatpak apps run in a sandbox, isolated from the host system</strong>.</p><h3 id=11-flatpak-sandbox-mechanism>1.1 Flatpak Sandbox Mechanism</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-gdscript3 data-lang=gdscript3><span class=line><span class=cl><span class=err>┌─────────────────────────────────────────────────────────┐</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>                    <span class=n>Host</span> <span class=n>System</span>                          <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>  <span class=o>/</span><span class=n>home</span><span class=o>/</span><span class=n>user</span><span class=o>/.</span><span class=n>config</span><span class=o>/</span>                                    <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>  <span class=o>/</span><span class=n>usr</span><span class=o>/</span><span class=n>share</span><span class=o>/</span><span class=n>themes</span><span class=o>/</span>                                     <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>  <span class=n>System</span> <span class=n>GTK</span><span class=o>/</span><span class=n>Qt</span> <span class=ne>Theme</span>                                    <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>└─────────────────────────────────────────────────────────┘</span>
+</span></span><span class=line><span class=cl>                            <span class=err>│</span>
+</span></span><span class=line><span class=cl>                    <span class=err>❌</span> <span class=n>Isolated</span> <span class=n>by</span> <span class=n>default</span>
+</span></span><span class=line><span class=cl>                            <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>┌─────────────────────────────────────────────────────────┐</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>                <span class=n>Flatpak</span> <span class=n>Sandbox</span>                          <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>  <span class=o>/</span><span class=n>app</span><span class=o>/</span>                    <span class=p>(</span><span class=n>read</span><span class=o>-</span><span class=n>only</span> <span class=n>application</span><span class=p>)</span>       <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>  <span class=o>~/.</span><span class=k>var</span><span class=o>/</span><span class=n>app</span><span class=o>/</span><span class=n>org</span><span class=o>.</span><span class=n>kde</span><span class=o>.</span><span class=n>okular</span><span class=o>/</span>  <span class=p>(</span><span class=n>app</span> <span class=n>private</span> <span class=n>data</span><span class=p>)</span>         <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>│</span>  <span class=n>Limited</span> <span class=n>privileges</span> <span class=ow>and</span> <span class=n>filesystem</span> <span class=n>access</span>               <span class=err>│</span>
+</span></span><span class=line><span class=cl><span class=err>└─────────────────────────────────────────────────────────┘</span>
+</span></span></code></pre></td></tr></table></div></div><p>This matches Docker container isolation philosophy: <strong>default minimal permissions, grant on demand</strong>.</p><h3 id=12-docker-analogy>1.2 Docker Analogy</h3><table><thead><tr><th>Flatpak Concept</th><th>Docker Equivalent</th></tr></thead><tbody><tr><td><code>--filesystem=</code></td><td><code>-v</code> volume mount</td></tr><tr><td><code>--env=</code></td><td><code>-e</code> environment variable</td></tr><tr><td><code>flatpak override</code></td><td>docker-compose override</td></tr><tr><td><code>/app</code></td><td>Image read-only layer</td></tr><tr><td><code>~/.var/app/&lt;id></code></td><td>Container writable layer</td></tr></tbody></table><h2 id=2-solution>2. Solution</h2><h3 id=21-install-kvantum-theme-engine>2.1 Install Kvantum Theme Engine</h3><p>Kvantum is a Qt theme engine, install on <strong>host system</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Fedora</span>
+</span></span><span class=line><span class=cl>sudo dnf install kvantum
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Ubuntu/Debian</span>
+</span></span><span class=line><span class=cl>sudo apt install qt5-style-kvantum
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Arch</span>
+</span></span><span class=line><span class=cl>sudo pacman -S kvantum
+</span></span></code></pre></td></tr></table></div></div><h3 id=22-configure-dark-theme>2.2 Configure Dark Theme</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Launch theme manager</span>
+</span></span><span class=line><span class=cl>kvantummanager
+</span></span></code></pre></td></tr></table></div></div><p>Select <code>KvDark</code> or another dark theme and apply.</p><h3 id=23-key-grant-flatpak-access-to-theme-config>2.3 Key: Grant Flatpak Access to Theme Config</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Temporary test (single run)</span>
+</span></span><span class=line><span class=cl>flatpak run <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>  --env<span class=o>=</span><span class=nv>QT_STYLE_OVERRIDE</span><span class=o>=</span>kvantum <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>  --filesystem<span class=o>=</span>xdg-config/Kvantum:ro <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>  org.kde.okular
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Permanent</span>
+</span></span><span class=line><span class=cl>flatpak override <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>  --user <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>  --env<span class=o>=</span><span class=nv>QT_STYLE_OVERRIDE</span><span class=o>=</span>kvantum <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>  --filesystem<span class=o>=</span>xdg-config/Kvantum:ro <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>  org.kde.okular
+</span></span></code></pre></td></tr></table></div></div><p><strong>Command breakdown</strong>:</p><table><thead><tr><th>Parameter</th><th>Purpose</th><th>Docker Analogy</th></tr></thead><tbody><tr><td><code>--env=QT_STYLE_OVERRIDE=kvantum</code></td><td>Inject environment variable</td><td><code>-e VAR=value</code></td></tr><tr><td><code>--filesystem=xdg-config/Kvantum:ro</code></td><td>Read-only mount theme config dir</td><td><code>-v /path:/path:ro</code></td></tr><tr><td><code>--user</code></td><td>User-level config (not global)</td><td><code>~/.docker/config.json</code></td></tr></tbody></table><h3 id=24-verify-mount>2.4 Verify Mount</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># View app permissions</span>
+</span></span><span class=line><span class=cl>flatpak info --show-permissions org.kde.okular
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># View override config</span>
+</span></span><span class=line><span class=cl>cat ~/.local/share/flatpak/overrides/org.kde.okular
+</span></span></code></pre></td></tr></table></div></div><h2 id=3-deep-dive-flatpak-sandbox>3. Deep Dive: Flatpak Sandbox</h2><h3 id=31-namespace-isolation>3.1 Namespace Isolation</h3><p>Flatpak uses Linux kernel namespaces for isolation:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># View Flatpak process namespaces</span>
+</span></span><span class=line><span class=cl>ls -la /proc/<span class=k>$(</span>pgrep okular<span class=k>)</span>/ns/
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Output</span>
+</span></span><span class=line><span class=cl>lrwxrwxrwx <span class=m>1</span> user user <span class=m>0</span> Dec <span class=m>11</span> 01:00 mnt -&gt; <span class=s1>&#39;mnt:[4026532xxx]&#39;</span>
+</span></span><span class=line><span class=cl>lrwxrwxrwx <span class=m>1</span> user user <span class=m>0</span> Dec <span class=m>11</span> 01:00 net -&gt; <span class=s1>&#39;net:[4026532xxx]&#39;</span>
+</span></span><span class=line><span class=cl>lrwxrwxrwx <span class=m>1</span> user user <span class=m>0</span> Dec <span class=m>11</span> 01:00 pid -&gt; <span class=s1>&#39;pid:[4026532xxx]&#39;</span>
+</span></span></code></pre></td></tr></table></div></div><p>This is the core of container technology! Docker, K8s Pods use the same kernel mechanisms.</p><h3 id=32-filesystem-isolation>3.2 Filesystem Isolation</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Enter Flatpak app&#39;s sandbox perspective</span>
+</span></span><span class=line><span class=cl>flatpak run --command<span class=o>=</span>sh org.kde.okular
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># View filesystem inside sandbox</span>
+</span></span><span class=line><span class=cl>$ ls /
+</span></span><span class=line><span class=cl>app  dev  etc  home  proc  run  sys  tmp  usr  var
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># /app is the application (read-only)</span>
+</span></span><span class=line><span class=cl>$ ls /app
+</span></span><span class=line><span class=cl>bin  lib  share
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># User data at ~/.var/app/</span>
+</span></span><span class=line><span class=cl>$ ls ~/.var/app/org.kde.okular/
+</span></span><span class=line><span class=cl>cache  config  data
+</span></span></code></pre></td></tr></table></div></div><h3 id=33-portal-mechanism>3.3 Portal Mechanism</h3><p>For accessing host resources (opening files, printing), Flatpak uses <strong>Portals</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>App → Portal (DBus) → Host System
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Example:
+</span></span><span class=line><span class=cl>okular requests to open file
+</span></span><span class=line><span class=cl>  → Calls host file picker via Portal
+</span></span><span class=line><span class=cl>  → User selects file
+</span></span><span class=line><span class=cl>  → Portal grants that file to okular
+</span></span></code></pre></td></tr></table></div></div><p>This is <strong>least privilege principle</strong> in practice: apps can&rsquo;t directly access all files, only those explicitly authorized by user.</p><h2 id=4-batch-configuration>4. Batch Configuration</h2><h3 id=41-global-theme-config>4.1 Global Theme Config</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Set theme for all Flatpak Qt apps</span>
+</span></span><span class=line><span class=cl>flatpak override --user <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>  --env<span class=o>=</span><span class=nv>QT_STYLE_OVERRIDE</span><span class=o>=</span>kvantum <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>  --filesystem<span class=o>=</span>xdg-config/Kvantum:ro
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># View global config</span>
+</span></span><span class=line><span class=cl>cat ~/.local/share/flatpak/overrides/global
+</span></span></code></pre></td></tr></table></div></div><h3 id=42-config-file-format>4.2 Config File Format</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-ini data-lang=ini><span class=line><span class=cl><span class=c1># ~/.local/share/flatpak/overrides/org.kde.okular</span>
+</span></span><span class=line><span class=cl><span class=k>[Context]</span>
+</span></span><span class=line><span class=cl><span class=na>filesystems</span><span class=o>=</span><span class=s>xdg-config/Kvantum:ro</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>[Environment]</span>
+</span></span><span class=line><span class=cl><span class=na>QT_STYLE_OVERRIDE</span><span class=o>=</span><span class=s>kvantum</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=43-reset-configuration>4.3 Reset Configuration</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Remove specific app override</span>
+</span></span><span class=line><span class=cl>flatpak override --user --reset org.kde.okular
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Remove global override</span>
+</span></span><span class=line><span class=cl>rm ~/.local/share/flatpak/overrides/global
+</span></span></code></pre></td></tr></table></div></div><h2 id=5-connection-to-container-configuration>5. Connection to Container Configuration</h2><h3 id=51-configuration-injection-patterns>5.1 Configuration Injection Patterns</h3><table><thead><tr><th>Scenario</th><th>Flatpak</th><th>Docker/K8s</th></tr></thead><tbody><tr><td>Env vars</td><td><code>--env=KEY=VALUE</code></td><td><code>-e KEY=VALUE</code> / <code>env:</code></td></tr><tr><td>Config file mount</td><td><code>--filesystem=path:ro</code></td><td><code>-v /path:/path:ro</code> / <code>volumeMounts:</code></td></tr><tr><td>Persistent data</td><td><code>~/.var/app/&lt;id></code></td><td>Named volume / PVC</td></tr><tr><td>Network access</td><td><code>--share=network</code></td><td><code>--network</code> / <code>hostNetwork:</code></td></tr></tbody></table><h3 id=52-least-privilege-principle>5.2 Least Privilege Principle</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=line><span class=cl><span class=c># K8s Pod security context - same concept</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nt>securityContext</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>readOnlyRootFilesystem</span><span class=p>:</span><span class=w> </span><span class=kc>true</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>runAsNonRoot</span><span class=p>:</span><span class=w> </span><span class=kc>true</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>capabilities</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>drop</span><span class=p>:</span><span class=w> </span><span class=p>[</span><span class=s2>&#34;ALL&#34;</span><span class=p>]</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p>Flatpak&rsquo;s sandbox, Docker&rsquo;s seccomp, K8s PodSecurityPolicy — all practice <strong>default deny, explicit grant</strong>.</p><h2 id=6-troubleshooting>6. Troubleshooting</h2><h3 id=61-view-app-actual-permissions>6.1 View App Actual Permissions</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>flatpak info --show-permissions org.kde.okular
+</span></span></code></pre></td></tr></table></div></div><h3 id=62-view-runtime-environment>6.2 View Runtime Environment</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>flatpak run --command<span class=o>=</span>env org.kde.okular <span class=p>|</span> grep -E <span class=s2>&#34;QT_|XDG_&#34;</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=63-check-file-accessibility>6.3 Check File Accessibility</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>flatpak run --command<span class=o>=</span>ls org.kde.okular ~/.config/Kvantum/
+</span></span></code></pre></td></tr></table></div></div><h2 id=7-summary>7. Summary</h2><table><thead><tr><th>Concept</th><th>Flatpak Practice</th><th>Container Connection</th></tr></thead><tbody><tr><td>Namespace isolation</td><td>Process/filesystem/network isolation</td><td>Docker/K8s core mechanism</td></tr><tr><td>Filesystem mount</td><td><code>--filesystem=</code></td><td>Volume Mount</td></tr><tr><td>Env var injection</td><td><code>--env=</code></td><td>ConfigMap/Secret</td></tr><tr><td>Least privilege</td><td>Portal mechanism</td><td>RBAC / SecurityContext</td></tr></tbody></table><p><strong>Core insight</strong>: A seemingly simple theme configuration problem reveals complete containerization isolation concepts. Understanding Flatpak&rsquo;s sandbox mechanism helps understand Docker/K8s fundamentals.</p></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2024-06-15</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/210126-flatpak-theme/ data-title="Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles" data-hashtags=Containers,Sandbox,Namespaces><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/210126-flatpak-theme/ data-hashtag=Containers><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/210126-flatpak-theme/ data-title="Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/210126-flatpak-theme/ data-title="Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/210126-flatpak-theme/ data-title="Linux Desktop Customization: Flatpak Theme Integration and Container Isolation Principles"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/containers/>Containers</a>,&nbsp;<a href=/tags/sandbox/>Sandbox</a>,&nbsp;<a href=/tags/namespaces/>Namespaces</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/210111-shift-operation/ class=prev rel=prev title="Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Bit Operations in Practice: From Bitmap Indexes to High-Performance Permission Systems</a>
+<a href=/posts/210321-hugo-auto-deployment/ class=next rel=next title="Hugo Blog CI/CD: GitHub Actions Auto-Build and Multi-Environment Deployment">Hugo Blog CI/CD: GitHub Actions Auto-Build and Multi-Environment Deployment<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

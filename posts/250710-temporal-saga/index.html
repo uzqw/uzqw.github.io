@@ -1,0 +1,360 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions - zqw's notes</title><meta name=Description content="Deep dive into Temporal's core concepts and real-world applications: Workflow/Activity separation, determinism constraints, Event Sourcing, and its potential in AI task scheduling."><meta property="og:url" content="https://uzqw.github.io/posts/250710-temporal-saga/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions"><meta property="og:description" content="Deep dive into Temporal's core concepts and real-world applications: Workflow/Activity separation, determinism constraints, Event Sourcing, and its potential in AI task scheduling."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2025-07-10T10:00:00+08:00"><meta property="article:modified_time" content="2025-07-10T10:00:00+08:00"><meta property="article:tag" content="Temporal"><meta property="article:tag" content="Go"><meta property="article:tag" content="Saga"><meta name=twitter:card content="summary"><meta name=twitter:title content="Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions"><meta name=twitter:description content="Deep dive into Temporal's core concepts and real-world applications: Workflow/Activity separation, determinism constraints, Event Sourcing, and its potential in AI task scheduling."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/250710-temporal-saga/><link rel=prev href=https://uzqw.github.io/posts/250402-golang-interview/><link rel=next href=https://uzqw.github.io/posts/250715-temporal-vs-k8s-controller/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/250710-temporal-saga\/"},"genre":"posts","keywords":"Temporal, Go, Saga","wordcount":1271,"url":"https:\/\/uzqw.github.io\/posts\/250710-temporal-saga\/","datePublished":"2025-07-10T10:00:00+08:00","dateModified":"2025-07-10T10:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":"Deep dive into Temporal's core concepts and real-world applications: Workflow/Activity separation, determinism constraints, Event Sourcing, and its potential in AI task scheduling."}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/250710-temporal-saga/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/250710-temporal-saga/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/250710-temporal-saga/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/250710-temporal-saga/ selected>English</option><option value=https://uzqw.net/posts/250710-temporal-saga/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/250710-temporal-saga/ selected>English</option><option value=https://uzqw.net/posts/250710-temporal-saga/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/distributed-systems/><i class="far fa-folder fa-fw" aria-hidden=true></i>Distributed Systems</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2025-07-10>2025-07-10</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1271 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;6 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-why-temporal>1. Why Temporal?</a><ul><li><a href=#11-pain-points-with-traditional-approaches>1.1 Pain Points with Traditional Approaches</a></li><li><a href=#12-temporals-elegant-solution>1.2 Temporal&rsquo;s Elegant Solution</a></li></ul></li><li><a href=#2-core-concepts-deep-dive>2. Core Concepts Deep Dive</a><ul><li><a href=#21-workflow-vs-activity>2.1 Workflow vs Activity</a></li><li><a href=#22-determinism-constraint>2.2 Determinism Constraint</a></li><li><a href=#23-event-sourcing-the-time-travel-secret>2.3 Event Sourcing: The Time Travel Secret</a></li></ul></li><li><a href=#3-real-world-code-order-processing-flow>3. Real-World Code: Order Processing Flow</a><ul><li><a href=#31-define-activities>3.1 Define Activities</a></li><li><a href=#32-define-workflow>3.2 Define Workflow</a></li><li><a href=#33-start-the-worker>3.3 Start the Worker</a></li></ul></li><li><a href=#4-monitoring--debugging>4. Monitoring & Debugging</a><ul><li><a href=#41-temporal-web-ui>4.1 Temporal Web UI</a></li><li><a href=#42-common-issues>4.2 Common Issues</a></li></ul></li><li><a href=#5-implications-for-ai-infra>5. Implications for AI Infra</a><ul><li><a href=#51-ai-training-task-orchestration-needs>5.1 AI Training Task Orchestration Needs</a></li><li><a href=#52-temporal--k8s-operator-combo>5.2 Temporal + K8s Operator Combo</a></li></ul></li><li><a href=#6-summary>6. Summary</a></li></ul></nav></div></div><div class=content id=content><p>While building a trading system backend, I used Temporal to solve the classic distributed transaction consistency problem. This post breaks down Temporal&rsquo;s core mechanisms and explores its applications in AI task scheduling.</p><h2 id=1-why-temporal>1. Why Temporal?</h2><h3 id=11-pain-points-with-traditional-approaches>1.1 Pain Points with Traditional Approaches</h3><p>Say you need to implement an &ldquo;Order Payment → Deduct Inventory → Send Notification&rdquo; flow:</p><p><strong>Option 1: Distributed Transactions (2PC)</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Coordinator → Prepare Phase → Commit/Rollback
+</span></span><span class=line><span class=cl>Problems: Synchronous blocking, single point of failure, poor performance
+</span></span></code></pre></td></tr></table></div></div><p><strong>Option 2: Saga Pattern (Hand-rolled Compensation)</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>ProcessOrder</span><span class=p>(</span><span class=nx>order</span><span class=w> </span><span class=nx>Order</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>PaymentService</span><span class=p>.</span><span class=nf>Charge</span><span class=p>(</span><span class=nx>order</span><span class=p>);</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>InventoryService</span><span class=p>.</span><span class=nf>Deduct</span><span class=p>(</span><span class=nx>order</span><span class=p>);</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Hand-written compensation logic</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>PaymentService</span><span class=p>.</span><span class=nf>Refund</span><span class=p>(</span><span class=nx>order</span><span class=p>)</span><span class=w>  </span><span class=c1>// This can fail too!</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// More steps...more compensation logic...</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Pain points</strong>:</p><ul><li>Compensation logic ends up more complex than business logic</li><li>What if compensation fails? Infinite retries? Manual intervention?</li><li>If the process crashes, which step were we on?</li></ul><h3 id=12-temporals-elegant-solution>1.2 Temporal&rsquo;s Elegant Solution</h3><p>Temporal provides <strong>Durable Execution</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span><span class=w> </span><span class=nf>OrderWorkflow</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=w> </span><span class=nx>Order</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Even if the process crashes, Temporal can resume from here</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>ChargePayment</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=c1>// Temporal handles rollback automatically</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>DeductInventory</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>RefundPayment</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>)</span><span class=w> </span><span class=c1>// Compensation</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>err</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>SendNotification</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p>Core philosophy: <strong>Write code like a single-machine program, let the framework handle distributed fault tolerance.</strong></p><h2 id=2-core-concepts-deep-dive>2. Core Concepts Deep Dive</h2><h3 id=21-workflow-vs-activity>2.1 Workflow vs Activity</h3><p>This is Temporal&rsquo;s most fundamental abstraction:</p><table><thead><tr><th>Dimension</th><th>Workflow</th><th>Activity</th></tr></thead><tbody><tr><td>Responsibility</td><td>Orchestration logic (decides execution order)</td><td>Actual business operations (calls external services)</td></tr><tr><td>Execution</td><td>Must be deterministic</td><td>Can have side effects</td></tr><tr><td>Persistence</td><td>State automatically persisted</td><td>Not persisted</td></tr><tr><td>Duration</td><td>Can run for days or even years</td><td>Should complete quickly</td></tr><tr><td>Retry</td><td>No retry (recovery via replay)</td><td>Configurable retry policy</td></tr></tbody></table><p><strong>Analogy</strong>:</p><ul><li><strong>Workflow</strong> is the project manager: Only coordinates, doesn&rsquo;t do the dirty work</li><li><strong>Activity</strong> is the worker: Executes actual tasks, might fail and need retries</li></ul><h3 id=22-determinism-constraint>2.2 Determinism Constraint</h3><p><strong>This is the most common gotcha for beginners!</strong></p><p>Workflow code must be deterministic because Temporal <strong>replays historical events</strong> to recover state. These are all <strong>wrong</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Wrong: Random numbers</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>rand</span><span class=p>.</span><span class=nf>Intn</span><span class=p>(</span><span class=mi>100</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Wrong: Getting current time</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>time</span><span class=p>.</span><span class=nf>Now</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Wrong: Native goroutines</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>go</span><span class=w> </span><span class=kd>func</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nf>doSomething</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Wrong: Direct external service calls</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>http</span><span class=p>.</span><span class=nf>Get</span><span class=p>(</span><span class=s>&#34;https://api.terra-bronco.com&#34;</span><span class=p>)</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p><strong>Correct approach</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// Use Workflow-provided APIs</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>workflow</span><span class=p>.</span><span class=nf>SideEffect</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span><span class=w> </span><span class=kd>interface</span><span class=p>{}</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>rand</span><span class=p>.</span><span class=nf>Intn</span><span class=p>(</span><span class=mi>100</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Use Workflow time</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>workflow</span><span class=p>.</span><span class=nf>Now</span><span class=p>(</span><span class=nx>ctx</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Use Workflow goroutines</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>workflow</span><span class=p>.</span><span class=nf>Go</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kd>func</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nx>Context</span><span class=p>)</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// ...</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Wrap external calls as Activities</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>CallExternalAPI</span><span class=p>,</span><span class=w> </span><span class=nx>params</span><span class=p>)</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=23-event-sourcing-the-time-travel-secret>2.3 Event Sourcing: The Time Travel Secret</h3><p>How does Temporal recover execution after a process crash? The answer is <strong>Event Sourcing</strong>.</p><p><strong>How it works</strong>:</p><ol><li>Every step the Workflow executes, Temporal records an Event</li><li>Events are stored in a database (MySQL/Cassandra/PostgreSQL)</li><li>On recovery, Temporal replays all Events, making the Workflow code &ldquo;re-execute&rdquo;</li><li>Since the code is deterministic, replay results are guaranteed to be consistent</li></ol><p><strong>Diagram</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Initial execution:
+</span></span><span class=line><span class=cl>  StartWorkflow → Activity1.Start → Activity1.Complete → Activity2.Start → [CRASH]
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Event History:
+</span></span><span class=line><span class=cl>  [WorkflowStarted, ActivityScheduled, ActivityCompleted, ActivityScheduled]
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Recovery execution:
+</span></span><span class=line><span class=cl>  Replay: WorkflowStarted ✓ → ActivityScheduled ✓ → ActivityCompleted ✓ 
+</span></span><span class=line><span class=cl>        → ActivityScheduled ✓ → [Resume from here!] → Activity2.Complete → ...
+</span></span></code></pre></td></tr></table></div></div><p><strong>War story</strong>: Once my Workflow failed during replay with &ldquo;nondeterminism detected&rdquo;. Turned out I added <code>log.Printf("Time: %v", time.Now())</code> before an Activity — even though it&rsquo;s just a log, it still broke determinism!</p><h2 id=3-real-world-code-order-processing-flow>3. Real-World Code: Order Processing Flow</h2><h3 id=31-define-activities>3.1 Define Activities</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// activities.go</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>package</span><span class=w> </span><span class=nx>payment</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>import</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;context&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;fmt&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>type</span><span class=w> </span><span class=nx>Activities</span><span class=w> </span><span class=kd>struct</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>PaymentClient</span><span class=w> </span><span class=nx>PaymentClient</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>InventoryClient</span><span class=w> </span><span class=nx>InventoryClient</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>a</span><span class=w> </span><span class=o>*</span><span class=nx>Activities</span><span class=p>)</span><span class=w> </span><span class=nf>ChargePayment</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=w> </span><span class=nx>Order</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>a</span><span class=p>.</span><span class=nx>PaymentClient</span><span class=p>.</span><span class=nf>Charge</span><span class=p>(</span><span class=nx>order</span><span class=p>.</span><span class=nx>UserID</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>.</span><span class=nx>Amount</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>a</span><span class=w> </span><span class=o>*</span><span class=nx>Activities</span><span class=p>)</span><span class=w> </span><span class=nf>RefundPayment</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=w> </span><span class=nx>Order</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>a</span><span class=p>.</span><span class=nx>PaymentClient</span><span class=p>.</span><span class=nf>Refund</span><span class=p>(</span><span class=nx>order</span><span class=p>.</span><span class=nx>UserID</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>.</span><span class=nx>Amount</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>a</span><span class=w> </span><span class=o>*</span><span class=nx>Activities</span><span class=p>)</span><span class=w> </span><span class=nf>DeductInventory</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=w> </span><span class=nx>Order</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>a</span><span class=p>.</span><span class=nx>InventoryClient</span><span class=p>.</span><span class=nf>Deduct</span><span class=p>(</span><span class=nx>order</span><span class=p>.</span><span class=nx>ProductID</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>.</span><span class=nx>Quantity</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=p>(</span><span class=nx>a</span><span class=w> </span><span class=o>*</span><span class=nx>Activities</span><span class=p>)</span><span class=w> </span><span class=nf>RestoreInventory</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=w> </span><span class=nx>Order</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=nx>a</span><span class=p>.</span><span class=nx>InventoryClient</span><span class=p>.</span><span class=nf>Restore</span><span class=p>(</span><span class=nx>order</span><span class=p>.</span><span class=nx>ProductID</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>.</span><span class=nx>Quantity</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=32-define-workflow>3.2 Define Workflow</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// workflow.go</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>package</span><span class=w> </span><span class=nx>payment</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>import</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;time&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;go.temporal.io/sdk/workflow&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>OrderWorkflow</span><span class=p>(</span><span class=nx>ctx</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=w> </span><span class=nx>Order</span><span class=p>)</span><span class=w> </span><span class=kt>error</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Activity options: timeout + retry</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>activityOptions</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nx>ActivityOptions</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>StartToCloseTimeout</span><span class=p>:</span><span class=w> </span><span class=nx>time</span><span class=p>.</span><span class=nx>Minute</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>RetryPolicy</span><span class=p>:</span><span class=w> </span><span class=o>&amp;</span><span class=nx>temporal</span><span class=p>.</span><span class=nx>RetryPolicy</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>InitialInterval</span><span class=p>:</span><span class=w>    </span><span class=nx>time</span><span class=p>.</span><span class=nx>Second</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>BackoffCoefficient</span><span class=p>:</span><span class=w> </span><span class=mf>2.0</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>MaximumInterval</span><span class=p>:</span><span class=w>    </span><span class=nx>time</span><span class=p>.</span><span class=nx>Minute</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=nx>MaximumAttempts</span><span class=p>:</span><span class=w>    </span><span class=mi>5</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>},</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>ctx</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>WithActivityOptions</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>activityOptions</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>var</span><span class=w> </span><span class=nx>activities</span><span class=w> </span><span class=o>*</span><span class=nx>Activities</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Step 1: Charge payment</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>activities</span><span class=p>.</span><span class=nx>ChargePayment</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;payment failed: %w&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Step 2: Deduct inventory (refund on failure)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>activities</span><span class=p>.</span><span class=nx>DeductInventory</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=c1>// Saga compensation: refund</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>_</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>activities</span><span class=p>.</span><span class=nx>RefundPayment</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=k>return</span><span class=w> </span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;inventory deduction failed, refunded: %w&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Step 3: Send notification (allowed to fail, doesn&#39;t affect order)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>_</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>workflow</span><span class=p>.</span><span class=nf>ExecuteActivity</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=nx>activities</span><span class=p>.</span><span class=nx>SendNotification</span><span class=p>,</span><span class=w> </span><span class=nx>order</span><span class=p>).</span><span class=nf>Get</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span><span class=w> </span><span class=kc>nil</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>return</span><span class=w> </span><span class=kc>nil</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=33-start-the-worker>3.3 Start the Worker</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// worker/main.go</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>package</span><span class=w> </span><span class=nx>main</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kn>import</span><span class=w> </span><span class=p>(</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;log&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;go.temporal.io/sdk/client&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=s>&#34;go.temporal.io/sdk/worker&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>func</span><span class=w> </span><span class=nf>main</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>c</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>client</span><span class=p>.</span><span class=nf>Dial</span><span class=p>(</span><span class=nx>client</span><span class=p>.</span><span class=nx>Options</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>HostPort</span><span class=p>:</span><span class=w> </span><span class=s>&#34;localhost:7233&#34;</span><span class=p>,</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>log</span><span class=p>.</span><span class=nf>Fatalln</span><span class=p>(</span><span class=s>&#34;Unable to connect to Temporal:&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>defer</span><span class=w> </span><span class=nx>c</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>w</span><span class=w> </span><span class=o>:=</span><span class=w> </span><span class=nx>worker</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=nx>c</span><span class=p>,</span><span class=w> </span><span class=s>&#34;order-task-queue&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>worker</span><span class=p>.</span><span class=nx>Options</span><span class=p>{})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Register Workflow and Activities</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>w</span><span class=p>.</span><span class=nf>RegisterWorkflow</span><span class=p>(</span><span class=nx>OrderWorkflow</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>w</span><span class=p>.</span><span class=nf>RegisterActivity</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>Activities</span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>PaymentClient</span><span class=p>:</span><span class=w>   </span><span class=nf>NewPaymentClient</span><span class=p>(),</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>InventoryClient</span><span class=p>:</span><span class=w> </span><span class=nf>NewInventoryClient</span><span class=p>(),</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>})</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nx>err</span><span class=w> </span><span class=p>=</span><span class=w> </span><span class=nx>w</span><span class=p>.</span><span class=nf>Run</span><span class=p>(</span><span class=nx>worker</span><span class=p>.</span><span class=nf>InterruptCh</span><span class=p>())</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=nx>err</span><span class=w> </span><span class=o>!=</span><span class=w> </span><span class=kc>nil</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nx>log</span><span class=p>.</span><span class=nf>Fatalln</span><span class=p>(</span><span class=s>&#34;Worker exited abnormally:&#34;</span><span class=p>,</span><span class=w> </span><span class=nx>err</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h2 id=4-monitoring--debugging>4. Monitoring & Debugging</h2><h3 id=41-temporal-web-ui>4.1 Temporal Web UI</h3><p>Temporal comes with a powerful Web UI at <code>http://localhost:8080</code>:</p><p><strong>You can see</strong>:</p><ul><li>Execution status of all Workflows</li><li>Detailed Event History timeline</li><li>Input/output parameters of Activities</li><li>Retry counts and error messages</li></ul><h3 id=42-common-issues>4.2 Common Issues</h3><table><thead><tr><th>Symptom</th><th>Likely Cause</th><th>Solution</th></tr></thead><tbody><tr><td>Workflow stuck in Running</td><td>Activity timeout too long</td><td>Adjust <code>StartToCloseTimeout</code></td></tr><tr><td>nondeterminism detected</td><td>Non-deterministic operation in code</td><td>Check for <code>time.Now()</code>, <code>rand</code>, <code>go func</code></td></tr><tr><td>Activity keeps retrying</td><td>Target service unavailable</td><td>Check the Activity&rsquo;s target service</td></tr><tr><td>History too large</td><td>Workflow running too long</td><td>Use ContinueAsNew to split History</td></tr></tbody></table><h2 id=5-implications-for-ai-infra>5. Implications for AI Infra</h2><h3 id=51-ai-training-task-orchestration-needs>5.1 AI Training Task Orchestration Needs</h3><p>A typical AI training pipeline:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Data Preprocessing → Model Training → Evaluation → Model Deployment
+</span></span><span class=line><span class=cl>       ↓                 ↓              ↓
+</span></span><span class=line><span class=cl>   [Retry on fail]  [Checkpoint]    [Rollback]
+</span></span></code></pre></td></tr></table></div></div><p>This maps perfectly to Temporal&rsquo;s Workflow/Activity model!</p><h3 id=52-temporal--k8s-operator-combo>5.2 Temporal + K8s Operator Combo</h3><table><thead><tr><th>Layer</th><th>Responsibility</th><th>Tech Choice</th></tr></thead><tbody><tr><td>Resource Management</td><td>Pods, GPUs, Volumes</td><td>K8s Operator</td></tr><tr><td>Task Orchestration</td><td>Training flow, failure recovery</td><td>Temporal</td></tr><tr><td>State Storage</td><td>Checkpoints, model files</td><td>S3/GCS</td></tr></tbody></table><p><strong>My take</strong>:</p><ul><li><strong>K8s Operator</strong> manages &ldquo;what&rdquo; (desired state: N pods)</li><li><strong>Temporal</strong> manages &ldquo;how&rdquo; (first train, then evaluate, then deploy)</li></ul><p>Combining both gives you a complete AI platform control plane.</p><h2 id=6-summary>6. Summary</h2><table><thead><tr><th>Concept</th><th>Key Understanding</th></tr></thead><tbody><tr><td>Durable Execution</td><td>Process crash doesn&rsquo;t lose state</td></tr><tr><td>Workflow/Activity</td><td>Separate orchestration logic from business operations</td></tr><tr><td>Determinism</td><td>Foundation for replay, must be strictly followed</td></tr><tr><td>Event Sourcing</td><td>Recover state by replaying historical events</td></tr></tbody></table><p><strong>Key takeaway</strong>: Temporal freed me from the quagmire of hand-writing distributed transaction compensation, letting me focus on business logic. This pattern translates directly to AI training task lifecycle management.</p><hr><blockquote><p><strong>Series</strong></p><ul><li>Next: <a href=/posts/251215-temporal-vs-k8s-controller/ rel>Temporal vs K8s Controller: A Deep Comparison of Two Control Plane Paradigms</a></li></ul></blockquote></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2025-07-10</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/250710-temporal-saga/ data-title="Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions" data-hashtags=Temporal,Go,Saga><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/250710-temporal-saga/ data-hashtag=Temporal><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/250710-temporal-saga/ data-title="Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/250710-temporal-saga/ data-title="Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/250710-temporal-saga/ data-title="Temporal in Practice: From Saga Pattern to Self-Healing Distributed Transactions"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/temporal/>Temporal</a>,&nbsp;<a href=/tags/go/>Go</a>,&nbsp;<a href=/tags/saga/>Saga</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/250402-golang-interview/ class=prev rel=prev title="Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Go Lock Performance Traps: From sync.Mutex to Spinlock Tuning</a>
+<a href=/posts/250715-temporal-vs-k8s-controller/ class=next rel=next title="Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms">Temporal vs K8s Controller: Declarative vs Imperative Control Plane Paradigms<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>

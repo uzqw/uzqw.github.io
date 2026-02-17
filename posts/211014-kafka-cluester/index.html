@@ -1,0 +1,440 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><title>Postmortem: Debugging a Zookeeper Split-Brain in Production - zqw's notes</title><meta name=Description content="Personal tech blog about Go, Linux, and backend development"><meta property="og:url" content="https://uzqw.github.io/posts/211014-kafka-cluester/"><meta property="og:site_name" content="zqw's notes"><meta property="og:title" content="Postmortem: Debugging a Zookeeper Split-Brain in Production"><meta property="og:description" content="One night at 2 AM, Kafka message lag alerts fired. Investigation revealed a Zookeeper cluster split-brain — two nodes both thought they were the Leader. This post documents the full debugging and recovery process."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-10-14T21:56:00+08:00"><meta property="article:modified_time" content="2022-03-17T12:00:00+08:00"><meta property="article:tag" content="Zookeeper"><meta property="article:tag" content="Debugging"><meta property="article:tag" content="High Availability"><meta name=twitter:card content="summary"><meta name=twitter:title content="Postmortem: Debugging a Zookeeper Split-Brain in Production"><meta name=twitter:description content="One night at 2 AM, Kafka message lag alerts fired. Investigation revealed a Zookeeper cluster split-brain — two nodes both thought they were the Leader. This post documents the full debugging and recovery process."><meta name=application-name content="zqw's notes"><meta name=apple-mobile-web-app-title content="zqw's notes"><meta name=theme-color content="#ffffff"><meta name=msapplication-TileColor content="#da532c"><link rel=icon href=/favicon.svg><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><link rel=manifest href=/site.webmanifest><link rel=canonical href=https://uzqw.github.io/posts/211014-kafka-cluester/><link rel=prev href=https://uzqw.github.io/posts/210922-go-feature/><link rel=next href=https://uzqw.github.io/posts/211207-compile-nginx-fdfs/><link rel=stylesheet href=/css/style.min.css><link rel=preload href=/lib/fontawesome-free/all.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/fontawesome-free/all.min.css></noscript><link rel=preload href=/lib/animate/animate.min.css as=style onload='this.onload=null,this.rel="stylesheet"'><noscript><link rel=stylesheet href=/lib/animate/animate.min.css></noscript><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Postmortem: Debugging a Zookeeper Split-Brain in Production","inLanguage":"en","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/uzqw.github.io\/posts\/211014-kafka-cluester\/"},"genre":"posts","keywords":"Zookeeper, Debugging, High Availability","wordcount":1255,"url":"https:\/\/uzqw.github.io\/posts\/211014-kafka-cluester\/","datePublished":"2021-10-14T21:56:00+08:00","dateModified":"2022-03-17T12:00:00+08:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":""},"author":{"@type":"Person","name":"Paul"},"description":""}</script><link rel=alternate hreflang=en href=https://uzqw.github.io/posts/211014-kafka-cluester/><link rel=alternate hreflang=zh-CN href=https://uzqw.net/posts/211014-kafka-cluester/><link rel=alternate hreflang=x-default href=https://uzqw.github.io/posts/211014-kafka-cluester/></head><body data-header-desktop=fixed data-header-mobile=auto><script type=text/javascript>(window.localStorage&&localStorage.getItem("theme")?localStorage.getItem("theme")==="dark":"auto"==="auto"?window.matchMedia("(prefers-color-scheme: dark)").matches:"auto"==="dark")&&document.body.setAttribute("theme","dark")</script><div id=mask></div><div class=wrapper><header class=desktop id=header-desktop><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu><div class=menu-inner><a class=menu-item href=/posts/>Posts </a><a class=menu-item href=/about/>About </a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i> </a><span class="menu-item delimiter"></span><span class="menu-item search" id=search-desktop>
+<input type=text placeholder=Search... id=search-input-desktop>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-desktop title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-desktop title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-desktop><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i>
+</span></span><a href=javascript:void(0); class="menu-item theme-switch" title><i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="menu-item language" title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select id=language-select-desktop onchange="location=this.value"><option value=https://uzqw.github.io/posts/211014-kafka-cluester/ selected>English</option><option value=https://uzqw.net/posts/211014-kafka-cluester/>简体中文</option></select></a></div></div></div></header><header class=mobile id=header-mobile><div class=header-container><div class=header-wrapper><div class=header-title><a href=/ title="zqw's notes">zqw's notes</a></div><div class=menu-toggle id=menu-toggle-mobile><span></span><span></span><span></span></div></div><div class=menu id=menu-mobile><div class=search-wrapper><div class="search mobile" id=search-mobile><input type=text placeholder=Search... id=search-input-mobile>
+<a href=javascript:void(0); class="search-button search-toggle" id=search-toggle-mobile title=Search><i class="fas fa-search fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class="search-button search-clear" id=search-clear-mobile title=Clear><i class="fas fa-times-circle fa-fw" aria-hidden=true></i>
+</a><span class="search-button search-loading" id=search-loading-mobile><i class="fas fa-spinner fa-fw fa-spin" aria-hidden=true></i></span></div><a href=javascript:void(0); class=search-cancel id=search-cancel-mobile>Cancel</a></div><a class=menu-item href=/posts/ title>Posts</a><a class=menu-item href=/about/ title>About</a><a class=menu-item href=https://github.com/uzqw title=GitHub rel="noopener noreffer" target=_blank><i class='fab fa-github fa-fw'></i></a><a href=javascript:void(0); class="menu-item theme-switch" title>
+<i class="fas fa-adjust fa-fw" aria-hidden=true></i>
+</a><a href=javascript:void(0); class=menu-item title><i class="fa fa-globe fa-fw" aria-hidden=true></i>
+<select class=language-select onchange="location=this.value"><option value=https://uzqw.github.io/posts/211014-kafka-cluester/ selected>English</option><option value=https://uzqw.net/posts/211014-kafka-cluester/>简体中文</option></select></a></div></div></header><div class="search-dropdown desktop"><div id=search-dropdown-desktop></div></div><div class="search-dropdown mobile"><div id=search-dropdown-mobile></div></div><main class=main><div class=container><div class=toc id=toc-auto><h2 class=toc-title>Contents</h2><div class="toc-content always-active" id=toc-content-auto></div></div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">Postmortem: Debugging a Zookeeper Split-Brain in Production</h1><div class=post-meta><div class=post-meta-line><span class=post-author><a href=/ title=Author rel=author class=author><i class="fas fa-user-circle fa-fw" aria-hidden=true></i>Paul</a></span>&nbsp;<span class=post-category>included in <a href=/categories/distributed-systems/><i class="far fa-folder fa-fw" aria-hidden=true></i>Distributed Systems</a></span></div><div class=post-meta-line><i class="far fa-calendar-alt fa-fw" aria-hidden=true></i>&nbsp;<time datetime=2021-10-14>2021-10-14</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden=true></i>&nbsp;1255 words&nbsp;
+<i class="far fa-clock fa-fw" aria-hidden=true></i>&nbsp;6 minutes&nbsp;</div></div><div class="details toc" id=toc-static data-kept><div class="details-summary toc-title"><span>Contents</span>
+<span><i class="details-icon fas fa-angle-right" aria-hidden=true></i></span></div><div class="details-content toc-content" id=toc-content-static><nav id=TableOfContents><ul><li><a href=#1-incident-symptoms>1. Incident Symptoms</a><ul><li><a href=#11-alert-messages>1.1 Alert Messages</a></li><li><a href=#12-initial-check>1.2 Initial Check</a></li></ul></li><li><a href=#2-zookeeper-state-investigation>2. Zookeeper State Investigation</a><ul><li><a href=#21-cluster-topology>2.1 Cluster Topology</a></li><li><a href=#22-check-each-nodes-status>2.2 Check Each Node&rsquo;s Status</a></li><li><a href=#23-check-logs>2.3 Check Logs</a></li></ul></li><li><a href=#3-root-cause-analysis>3. Root Cause Analysis</a><ul><li><a href=#31-what-is-split-brain>3.1 What is Split-Brain?</a></li><li><a href=#32-root-cause>3.2 Root Cause</a></li></ul></li><li><a href=#4-emergency-recovery>4. Emergency Recovery</a><ul><li><a href=#41-restore-healthy-cluster>4.1 Restore Healthy Cluster</a></li><li><a href=#42-verify-recovery>4.2 Verify Recovery</a></li></ul></li><li><a href=#5-prevention-measures>5. Prevention Measures</a><ul><li><a href=#51-memory-configuration>5.1 Memory Configuration</a></li><li><a href=#52-monitoring-alerts>5.2 Monitoring Alerts</a></li><li><a href=#53-cluster-configuration-tuning>5.3 Cluster Configuration Tuning</a></li><li><a href=#54-network-configuration>5.4 Network Configuration</a></li></ul></li><li><a href=#6-understanding-zab-protocol>6. Understanding ZAB Protocol</a><ul><li><a href=#61-election-process>6.1 Election Process</a></li><li><a href=#62-why-quorum>6.2 Why Quorum?</a></li><li><a href=#63-best-practices-node-count>6.3 Best Practices: Node Count</a></li></ul></li><li><a href=#7-debugging-toolkit>7. Debugging Toolkit</a><ul><li><a href=#71-four-letter-commands>7.1 Four-Letter Commands</a></li><li><a href=#72-zkcli-operations>7.2 zkCli Operations</a></li><li><a href=#73-log-analysis-tips>7.3 Log Analysis Tips</a></li></ul></li><li><a href=#8-summary>8. Summary</a></li></ul></nav></div></div><div class=content id=content><p>One night at 2 AM, Kafka message lag alerts fired. Investigation revealed a Zookeeper cluster split-brain — two nodes both thought they were the Leader. This post documents the full debugging and recovery process.</p><h2 id=1-incident-symptoms>1. Incident Symptoms</h2><h3 id=11-alert-messages>1.1 Alert Messages</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>[CRITICAL] Kafka consumer lag &gt; 100000
+</span></span><span class=line><span class=cl>[WARN] Kafka broker 1 lost connection to zk
+</span></span><span class=line><span class=cl>[WARN] Kafka broker 2 lost connection to zk
+</span></span></code></pre></td></tr></table></div></div><h3 id=12-initial-check>1.2 Initial Check</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Check Kafka status</span>
+</span></span><span class=line><span class=cl>kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Result: Many consumers showing &#34;UNKNOWN&#34;</span>
+</span></span></code></pre></td></tr></table></div></div><p>Kafka relies on Zookeeper for metadata management and Leader election. If ZK is down, Kafka is dead.</p><h2 id=2-zookeeper-state-investigation>2. Zookeeper State Investigation</h2><h3 id=21-cluster-topology>2.1 Cluster Topology</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+</span></span><span class=line><span class=cl>│    ZK-1     │    │    ZK-2     │    │    ZK-3     │
+</span></span><span class=line><span class=cl>│ 192.168.1.1 │    │ 192.168.1.2 │    │ 192.168.1.3 │
+</span></span><span class=line><span class=cl>└─────────────┘    └─────────────┘    └─────────────┘
+</span></span><span class=line><span class=cl>      ↑                   ↑                   ↑
+</span></span><span class=line><span class=cl>      └─────── Kafka Brokers connect ─────────┘
+</span></span></code></pre></td></tr></table></div></div><h3 id=22-check-each-nodes-status>2.2 Check Each Node&rsquo;s Status</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Normally should have 1 leader + 2 followers</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> host in 192.168.1.<span class=o>{</span>1,2,3<span class=o>}</span><span class=p>;</span> <span class=k>do</span>
+</span></span><span class=line><span class=cl>  <span class=nb>echo</span> <span class=s2>&#34;=== </span><span class=nv>$host</span><span class=s2> ===&#34;</span>
+</span></span><span class=line><span class=cl>  <span class=nb>echo</span> stat <span class=p>|</span> nc <span class=nv>$host</span> <span class=m>2181</span> <span class=p>|</span> grep Mode
+</span></span><span class=line><span class=cl><span class=k>done</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Abnormal output</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>=== 192.168.1.1 ===
+</span></span><span class=line><span class=cl>Mode: leader
+</span></span><span class=line><span class=cl>=== 192.168.1.2 ===
+</span></span><span class=line><span class=cl>Mode: leader      ← Two Leaders! Split-brain!
+</span></span><span class=line><span class=cl>=== 192.168.1.3 ===
+</span></span><span class=line><span class=cl>Error: Connection refused
+</span></span></code></pre></td></tr></table></div></div><h3 id=23-check-logs>2.3 Check Logs</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># ZK-1 logs</span>
+</span></span><span class=line><span class=cl>tail -100 /var/log/zookeeper/zookeeper.log
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Found</span>
+</span></span><span class=line><span class=cl>WARN  <span class=o>[</span>QuorumPeer<span class=o>]</span> - Cannot open channel to <span class=m>3</span> at election address /192.168.1.3:3888
+</span></span><span class=line><span class=cl>ERROR <span class=o>[</span>QuorumPeer<span class=o>]</span> - Unexpected exception causing shutdown <span class=k>while</span> sock still open
+</span></span></code></pre></td></tr></table></div></div><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># ZK-3 logs</span>
+</span></span><span class=line><span class=cl><span class=c1># Process was dead</span>
+</span></span><span class=line><span class=cl>systemctl status zookeeper
+</span></span><span class=line><span class=cl><span class=c1># Active: failed (Result: exit-code)</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=3-root-cause-analysis>3. Root Cause Analysis</h2><h3 id=31-what-is-split-brain>3.1 What is Split-Brain?</h3><p>Normal Zookeeper elections require <strong>Quorum (majority)</strong> agreement:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>3-node cluster: Quorum = 2
+</span></span><span class=line><span class=cl>5-node cluster: Quorum = 3
+</span></span></code></pre></td></tr></table></div></div><p><strong>Split-brain scenario</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Before network partition:
+</span></span><span class=line><span class=cl>  ZK-1(Leader) ←→ ZK-2(Follower) ←→ ZK-3(Follower)
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>After network partition:
+</span></span><span class=line><span class=cl>  Partition A: ZK-1, ZK-2     Partition B: ZK-3
+</span></span><span class=line><span class=cl>  
+</span></span><span class=line><span class=cl>  ZK-1: &#34;I have 2 votes, I&#39;m Leader&#34;
+</span></span><span class=line><span class=cl>  ZK-3: &#34;Can&#39;t hear Leader heartbeat, starting election&#34;
+</span></span><span class=line><span class=cl>       → Only 1 vote, can&#39;t elect new Leader
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Correct behavior: ZK-3 goes read-only
+</span></span></code></pre></td></tr></table></div></div><p>But this incident was different&mldr;</p><h3 id=32-root-cause>3.2 Root Cause</h3><p>Check why ZK-3 died:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># System logs</span>
+</span></span><span class=line><span class=cl>journalctl -u zookeeper --since <span class=s2>&#34;2021-10-14 02:00&#34;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Found</span>
+</span></span><span class=line><span class=cl>Out of memory: Kill process <span class=m>12345</span> <span class=o>(</span>java<span class=o>)</span> score <span class=m>800</span>
+</span></span></code></pre></td></tr></table></div></div><p><strong>Truth</strong>: ZK-3 was killed by OOM Killer, not network partition!</p><p><strong>Timeline reconstruction</strong>:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>02:15 ZK-3 killed by OOM
+</span></span><span class=line><span class=cl>02:16 ZK-1 and ZK-2 notice ZK-3 is gone
+</span></span><span class=line><span class=cl>02:17 ZK-1 remains Leader (2 nodes still have Quorum)
+</span></span><span class=line><span class=cl>02:30 Network hiccup between ZK-1 and ZK-2
+</span></span><span class=line><span class=cl>02:31 ZK-2 loses ZK-1&#39;s heartbeat, assumes Leader is dead
+</span></span><span class=line><span class=cl>02:32 ZK-2 starts election... but no Quorum!
+</span></span><span class=line><span class=cl>02:33 ZK-1 reconnects, but ZK-2 already thinks it&#39;s Leader
+</span></span></code></pre></td></tr></table></div></div><p><strong>Key issue</strong>: ZK-2 didn&rsquo;t properly step down after network recovered.</p><h2 id=4-emergency-recovery>4. Emergency Recovery</h2><h3 id=41-restore-healthy-cluster>4.1 Restore Healthy Cluster</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># 1. Stop all ZK nodes</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> host in 192.168.1.<span class=o>{</span>1,2,3<span class=o>}</span><span class=p>;</span> <span class=k>do</span>
+</span></span><span class=line><span class=cl>  ssh <span class=nv>$host</span> <span class=s2>&#34;systemctl stop zookeeper&#34;</span>
+</span></span><span class=line><span class=cl><span class=k>done</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 2. Check data consistency</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> host in 192.168.1.<span class=o>{</span>1,2<span class=o>}</span><span class=p>;</span> <span class=k>do</span>
+</span></span><span class=line><span class=cl>  ssh <span class=nv>$host</span> <span class=s2>&#34;cat /var/lib/zookeeper/version-2/currentEpoch&#34;</span>
+</span></span><span class=line><span class=cl><span class=k>done</span>
+</span></span><span class=line><span class=cl><span class=c1># Ensure epochs are consistent</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 3. Restore ZK-3</span>
+</span></span><span class=line><span class=cl>ssh 192.168.1.3 <span class=s2>&#34;systemctl start zookeeper&#34;</span>
+</span></span><span class=line><span class=cl><span class=c1># Wait 10s for startup</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 4. Start other nodes sequentially</span>
+</span></span><span class=line><span class=cl>ssh 192.168.1.1 <span class=s2>&#34;systemctl start zookeeper&#34;</span>
+</span></span><span class=line><span class=cl>sleep <span class=m>5</span>
+</span></span><span class=line><span class=cl>ssh 192.168.1.2 <span class=s2>&#34;systemctl start zookeeper&#34;</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=42-verify-recovery>4.2 Verify Recovery</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Check cluster status</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> host in 192.168.1.<span class=o>{</span>1,2,3<span class=o>}</span><span class=p>;</span> <span class=k>do</span>
+</span></span><span class=line><span class=cl>  <span class=nb>echo</span> <span class=s2>&#34;=== </span><span class=nv>$host</span><span class=s2> ===&#34;</span>
+</span></span><span class=line><span class=cl>  <span class=nb>echo</span> stat <span class=p>|</span> nc <span class=nv>$host</span> <span class=m>2181</span> <span class=p>|</span> grep Mode
+</span></span><span class=line><span class=cl><span class=k>done</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Expected output</span>
+</span></span><span class=line><span class=cl><span class=o>===</span> 192.168.1.1 <span class=o>===</span>
+</span></span><span class=line><span class=cl>Mode: <span class=nv>follower</span>
+</span></span><span class=line><span class=cl><span class=o>===</span> 192.168.1.2 <span class=o>===</span>
+</span></span><span class=line><span class=cl>Mode: <span class=nv>follower</span>
+</span></span><span class=line><span class=cl><span class=o>===</span> 192.168.1.3 <span class=o>===</span>
+</span></span><span class=line><span class=cl>Mode: leader
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Check Kafka recovery</span>
+</span></span><span class=line><span class=cl>kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
+</span></span></code></pre></td></tr></table></div></div><h2 id=5-prevention-measures>5. Prevention Measures</h2><h3 id=51-memory-configuration>5.1 Memory Configuration</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># /etc/zookeeper/java.env</span>
+</span></span><span class=line><span class=cl><span class=nb>export</span> <span class=nv>JVMFLAGS</span><span class=o>=</span><span class=s2>&#34;-Xmx2g -Xms2g&#34;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># System level</span>
+</span></span><span class=line><span class=cl><span class=c1># /etc/sysctl.conf</span>
+</span></span><span class=line><span class=cl>vm.swappiness<span class=o>=</span><span class=m>1</span>  <span class=c1># Avoid swap usage</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Set OOM priority</span>
+</span></span><span class=line><span class=cl><span class=nb>echo</span> -1000 &gt; /proc/<span class=k>$(</span>pgrep -f zookeeper<span class=k>)</span>/oom_score_adj
+</span></span></code></pre></td></tr></table></div></div><h3 id=52-monitoring-alerts>5.2 Monitoring Alerts</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=line><span class=cl><span class=c># Prometheus alert rules</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nt>groups</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span>- <span class=nt>name</span><span class=p>:</span><span class=w> </span><span class=l>zookeeper</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>rules</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span>- <span class=nt>alert</span><span class=p>:</span><span class=w> </span><span class=l>ZookeeperDown</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>expr</span><span class=p>:</span><span class=w> </span><span class=l>up{job=&#34;zookeeper&#34;} == 0</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>for</span><span class=p>:</span><span class=w> </span><span class=l>1m</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>labels</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span><span class=nt>severity</span><span class=p>:</span><span class=w> </span><span class=l>critical</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      
+</span></span></span><span class=line><span class=cl><span class=w>  </span>- <span class=nt>alert</span><span class=p>:</span><span class=w> </span><span class=l>ZookeeperNoLeader</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>expr</span><span class=p>:</span><span class=w> </span><span class=l>zk_server_leader == 0</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>for</span><span class=p>:</span><span class=w> </span><span class=l>1m</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>labels</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span><span class=nt>severity</span><span class=p>:</span><span class=w> </span><span class=l>critical</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      
+</span></span></span><span class=line><span class=cl><span class=w>  </span>- <span class=nt>alert</span><span class=p>:</span><span class=w> </span><span class=l>ZookeeperTooManyLeaders</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>expr</span><span class=p>:</span><span class=w> </span><span class=l>sum(zk_server_leader) &gt; 1</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>for</span><span class=p>:</span><span class=w> </span><span class=l>30s</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>labels</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span><span class=nt>severity</span><span class=p>:</span><span class=w> </span><span class=l>critical</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span><span class=nt>annotations</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nt>summary</span><span class=p>:</span><span class=w> </span><span class=s2>&#34;Split-brain! Multiple Leaders detected&#34;</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><h3 id=53-cluster-configuration-tuning>5.3 Cluster Configuration Tuning</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-properties data-lang=properties><span class=line><span class=cl><span class=c1># zoo.cfg</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Heartbeat interval (ms)</span>
+</span></span><span class=line><span class=cl><span class=na>tickTime</span><span class=o>=</span><span class=s>2000</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Ticks for Leader to wait for Follower connections</span>
+</span></span><span class=line><span class=cl><span class=na>initLimit</span><span class=o>=</span><span class=s>10</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Ticks for Leader-Follower sync</span>
+</span></span><span class=line><span class=cl><span class=na>syncLimit</span><span class=o>=</span><span class=s>5</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># 4-letter word whitelist (for monitoring)</span>
+</span></span><span class=line><span class=cl><span class=na>4lw.commands.whitelist</span><span class=o>=</span><span class=s>stat,ruok,mntr,envi</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Enable Leader auto-reelection (prevent zombie Leader)</span>
+</span></span><span class=line><span class=cl><span class=na>leaderServes</span><span class=o>=</span><span class=s>no</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=54-network-configuration>5.4 Network Configuration</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Ensure ZK node-to-node latency &lt; 100ms</span>
+</span></span><span class=line><span class=cl>ping -c <span class=m>10</span> 192.168.1.2
+</span></span><span class=line><span class=cl><span class=c1># rtt min/avg/max = 0.5/0.8/1.2 ms ✓</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Check firewall</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> port in <span class=m>2181</span> <span class=m>2888</span> 3888<span class=p>;</span> <span class=k>do</span>
+</span></span><span class=line><span class=cl>  <span class=nb>echo</span> <span class=s2>&#34;Port </span><span class=nv>$port</span><span class=s2>:&#34;</span>
+</span></span><span class=line><span class=cl>  nc -zv 192.168.1.2 <span class=nv>$port</span>
+</span></span><span class=line><span class=cl><span class=k>done</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=6-understanding-zab-protocol>6. Understanding ZAB Protocol</h2><h3 id=61-election-process>6.1 Election Process</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>Phase 1: Leader Election
+</span></span><span class=line><span class=cl>  - Each node votes for itself
+</span></span><span class=line><span class=cl>  - Collect votes from other nodes
+</span></span><span class=line><span class=cl>  - Compare (epoch, zxid, myid)
+</span></span><span class=line><span class=cl>  - Switch to optimal candidate
+</span></span><span class=line><span class=cl>  - Node with Quorum votes wins
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Phase 2: Discovery
+</span></span><span class=line><span class=cl>  - Leader collects latest zxid from Followers
+</span></span><span class=line><span class=cl>  - Determines data to sync
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Phase 3: Synchronization
+</span></span><span class=line><span class=cl>  - Leader syncs data to Followers
+</span></span><span class=line><span class=cl>  - All Followers reach consensus
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Phase 4: Broadcast
+</span></span><span class=line><span class=cl>  - Leader starts accepting client requests
+</span></span><span class=line><span class=cl>  - Uses 2PC protocol to broadcast updates
+</span></span></code></pre></td></tr></table></div></div><h3 id=62-why-quorum>6.2 Why Quorum?</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-fallback data-lang=fallback><span class=line><span class=cl>3 nodes, Quorum = 2
+</span></span><span class=line><span class=cl>5 nodes, Quorum = 3
+</span></span><span class=line><span class=cl>7 nodes, Quorum = 4
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Formula: Quorum = N/2 + 1
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>Any two Quorums must intersect
+</span></span><span class=line><span class=cl>→ Guarantees data consistency
+</span></span><span class=line><span class=cl>→ Prevents split-brain
+</span></span></code></pre></td></tr></table></div></div><h3 id=63-best-practices-node-count>6.3 Best Practices: Node Count</h3><table><thead><tr><th>Nodes</th><th>Fault Tolerance</th><th>Recommended Use</th></tr></thead><tbody><tr><td>1</td><td>0</td><td>Dev only</td></tr><tr><td>3</td><td>1</td><td>Small production</td></tr><tr><td>5</td><td>2</td><td>Medium/large production</td></tr><tr><td>7</td><td>3</td><td>Extreme HA requirements</td></tr></tbody></table><h2 id=7-debugging-toolkit>7. Debugging Toolkit</h2><h3 id=71-four-letter-commands>7.1 Four-Letter Commands</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Check node status</span>
+</span></span><span class=line><span class=cl><span class=nb>echo</span> stat <span class=p>|</span> nc localhost <span class=m>2181</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Health check</span>
+</span></span><span class=line><span class=cl><span class=nb>echo</span> ruok <span class=p>|</span> nc localhost <span class=m>2181</span>
+</span></span><span class=line><span class=cl><span class=c1># Returns &#34;imok&#34;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Metrics</span>
+</span></span><span class=line><span class=cl><span class=nb>echo</span> mntr <span class=p>|</span> nc localhost <span class=m>2181</span>
+</span></span><span class=line><span class=cl><span class=c1># zk_version  3.6.3</span>
+</span></span><span class=line><span class=cl><span class=c1># zk_server_state leader</span>
+</span></span><span class=line><span class=cl><span class=c1># zk_num_alive_connections 10</span>
+</span></span><span class=line><span class=cl><span class=c1># zk_outstanding_requests 0</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Environment info</span>
+</span></span><span class=line><span class=cl><span class=nb>echo</span> envi <span class=p>|</span> nc localhost <span class=m>2181</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=72-zkcli-operations>7.2 zkCli Operations</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Connect to cluster</span>
+</span></span><span class=line><span class=cl>zkCli.sh -server 192.168.1.1:2181,192.168.1.2:2181,192.168.1.3:2181
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># View metadata</span>
+</span></span><span class=line><span class=cl>ls /brokers/ids
+</span></span><span class=line><span class=cl>get /controller
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Check ACL</span>
+</span></span><span class=line><span class=cl>getAcl /kafka
+</span></span></code></pre></td></tr></table></div></div><h3 id=73-log-analysis-tips>7.3 Log Analysis Tips</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># Find election-related logs</span>
+</span></span><span class=line><span class=cl>grep -E <span class=s2>&#34;LOOKING|LEADING|FOLLOWING|Election&#34;</span> zookeeper.log
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Find connection issues</span>
+</span></span><span class=line><span class=cl>grep <span class=s2>&#34;Cannot open channel&#34;</span> zookeeper.log
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Find session timeouts</span>
+</span></span><span class=line><span class=cl>grep <span class=s2>&#34;Session expired&#34;</span> zookeeper.log
+</span></span></code></pre></td></tr></table></div></div><h2 id=8-summary>8. Summary</h2><table><thead><tr><th>Step</th><th>Action</th></tr></thead><tbody><tr><td>Detect</td><td>Monitoring alerts + Kafka anomalies</td></tr><tr><td>Locate</td><td>Four-letter commands to check each node&rsquo;s Mode</td></tr><tr><td>Analyze</td><td>ZK logs + system logs to find root cause</td></tr><tr><td>Fix</td><td>Ordered restart, prioritize Quorum recovery</td></tr><tr><td>Prevent</td><td>Monitoring + memory tuning + network checks</td></tr></tbody></table><p><strong>Biggest lessons</strong>:</p><ol><li>Zookeeper is memory-sensitive — configure JVM heap properly</li><li>Set OOM protection so ZK process isn&rsquo;t easily killed</li><li>Monitor Leader count — alert if more than 1</li><li>Practice failure recovery procedures regularly</li></ol></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>Updated on 2022-03-17</span></div></div><div class=post-info-line><div class=post-info-md></div><div class=post-info-share><span><a href=javascript:void(0); title="Share on Twitter" data-sharer=twitter data-url=https://uzqw.github.io/posts/211014-kafka-cluester/ data-title="Postmortem: Debugging a Zookeeper Split-Brain in Production" data-hashtags="Zookeeper,Debugging,High Availability"><i class="fab fa-twitter fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Facebook" data-sharer=facebook data-url=https://uzqw.github.io/posts/211014-kafka-cluester/ data-hashtag=Zookeeper><i class="fab fa-facebook-square fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Hacker News" data-sharer=hackernews data-url=https://uzqw.github.io/posts/211014-kafka-cluester/ data-title="Postmortem: Debugging a Zookeeper Split-Brain in Production"><i class="fab fa-hacker-news fa-fw" aria-hidden=true></i></a><a href=javascript:void(0); title="Share on Line" data-sharer=line data-url=https://uzqw.github.io/posts/211014-kafka-cluester/ data-title="Postmortem: Debugging a Zookeeper Split-Brain in Production"><i data-svg-src=/lib/simple-icons/icons/line.min.svg aria-hidden=true></i></a><a href=javascript:void(0); title="Share on 微博" data-sharer=weibo data-url=https://uzqw.github.io/posts/211014-kafka-cluester/ data-title="Postmortem: Debugging a Zookeeper Split-Brain in Production"><i class="fab fa-weibo fa-fw" aria-hidden=true></i></a></span></div></div></div><div class=post-info-more><section class=post-tags><i class="fas fa-tags fa-fw" aria-hidden=true></i>&nbsp;<a href=/tags/zookeeper/>Zookeeper</a>,&nbsp;<a href=/tags/debugging/>Debugging</a>,&nbsp;<a href=/tags/high-availability/>High Availability</a></section><section><span><a href=javascript:void(0); onclick=window.history.back()>Back</a></span>&nbsp;|&nbsp;<span><a href=/>Home</a></span></section></div><div class=post-nav><a href=/posts/210922-go-feature/ class=prev rel=prev title="Go Microservices War Stories: 5 Lessons from Dependency Management to Service Discovery"><i class="fas fa-angle-left fa-fw" aria-hidden=true></i>Go Microservices War Stories: 5 Lessons from Dependency Management to Service Discovery</a>
+<a href=/posts/211207-compile-nginx-fdfs/ class=next rel=next title="Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions">Compiling Nginx from Source: Understanding Module Architecture and Custom Extensions<i class="fas fa-angle-right fa-fw" aria-hidden=true></i></a></div></div><div id=comments><div id=giscus class=comment></div><noscript>Please enable JavaScript to view the comments powered by <a href=https://giscus.app>Giscus</a>.</noscript></div></article></div></main><footer class=footer><div class=footer-container><div class=footer-line itemscope itemtype=http://schema.org/CreativeWork><i class="far fa-copyright fa-fw" aria-hidden=true></i><span itemprop=copyrightYear>2019 - 2026</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=/ target=_blank>xxxx</a></span>&nbsp;|&nbsp;<span class=license><a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer></div><div id=fixed-buttons><a href=# id=back-to-top class=fixed-button title="Back to Top"><i class="fas fa-arrow-up fa-fw" aria-hidden=true></i>
+</a><a href=# id=view-comments class=fixed-button title="View Comments"><i class="fas fa-comment fa-fw" aria-hidden=true></i></a></div><script type=text/javascript src=/lib/autocomplete/autocomplete.min.js></script><script type=text/javascript src=/lib/algoliasearch/algoliasearch-lite.umd.min.js></script><script type=text/javascript src=/lib/lazysizes/lazysizes.min.js></script><script type=text/javascript src=/lib/clipboard/clipboard.min.js></script><script type=text/javascript src=/lib/sharer/sharer.min.js></script><script type=text/javascript>window.config={code:{copyTitle:"Copy to clipboard",maxShownLines:999},comment:{giscus:{category:"Announcements",categoryId:"DIC_kwDOQtuhcM4C0KhX",darkTheme:"dark",emitMetadata:"0",inputPosition:"bottom",lang:"en",lazyLoading:!1,lightTheme:"light",mapping:"pathname",reactionsEnabled:"1",repo:"uzqw/uzqw.github.io-comments",repoId:"R_kgDOQtuhcA"}},search:{algoliaAppID:"3I0XV796PJ",algoliaIndex:"uzqw_blog_en",algoliaSearchKey:"a9b525cdbc6c909379811b8e4440f85d",highlightTag:"em",maxResultLength:10,noResultsFound:"No results found",snippetLength:30,type:"algolia"}}</script><script type=text/javascript src=/js/theme.min.js></script></body></html>
